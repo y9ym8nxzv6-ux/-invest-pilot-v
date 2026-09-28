@@ -33,4 +33,5 @@ jobs:
           git add data/latest-ranking.json
           git diff --cached --quiet && exit 0
           git commit -m "Refresh market ranking [skip ci]"
+          git pull --rebase origin main
           git push
