@@ -36,10 +36,17 @@
 .analysis-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.analysis-rank{font-size:12px;color:var(--muted)}.analysis-score{font-size:24px;font-weight:950;margin-top:2px}.analysis-judge{font-size:16px;font-weight:900;margin-top:6px}
 .analysis-reason{margin-top:8px;font-size:12px;line-height:1.5;color:#d2dcef}.analysis-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}.analysis-cell{padding:10px;background:#111f39;border-radius:11px}.analysis-cell .k{font-size:9px;color:var(--muted)}.analysis-cell .v{font-size:13px;font-weight:850;margin-top:3px}
 .explain-box{margin-top:10px;padding:10px 12px;border-radius:12px;background:#101d35;border:1px solid #2c456f;font-size:11px;line-height:1.55;color:#c8d5e8}
+
+.home-search{display:flex;gap:8px}.home-search input{flex:1}.health-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px}.health-dot{width:9px;height:9px;border-radius:50%;background:#4bd78a;display:inline-block}.health-dot.warn{background:#ffd166}.health-dot.bad{background:#ff7777}.health-text{font-size:11px;color:var(--muted)}
+.guide-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.guide-step{padding:10px;background:#101d35;border-radius:12px;border:1px solid #2a4169}.guide-step b{display:block;font-size:12px;margin-bottom:3px}.guide-step span{font-size:10px;color:var(--muted);line-height:1.4}
+.change-list{display:grid;gap:7px;margin-top:8px}.change-item{padding:9px 10px;border-radius:11px;background:#111f39;border:1px solid #2a4169;font-size:11px}.change-item b{font-size:12px}.empty-soft{padding:10px;color:var(--muted);font-size:11px}
+.compare-list{display:grid;gap:10px}.compare-card{padding:13px;border-radius:14px;background:#101d35;border:1px solid #2a4169}.compare-card .head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.compare-card .title{font-weight:900;font-size:14px}.compare-card .sub{font-size:10px;color:var(--muted);margin-top:3px}.compare-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:10px}.compare-cell{padding:8px;background:#0b1830;border-radius:10px}.compare-cell .k{font-size:9px;color:var(--muted)}.compare-cell .v{font-size:12px;font-weight:850;margin-top:2px}.compare-remove{border:0;background:#2b3650;color:#c9d5e8;width:30px;height:30px;border-radius:50%}
+.details-box{margin-top:10px}.details-box summary{cursor:pointer;color:#b9c7dc;font-size:12px;font-weight:800}.details-box[open] summary{margin-bottom:10px}
+@media(max-width:520px){.guide-grid{grid-template-columns:1fr}.compare-grid{grid-template-columns:repeat(2,1fr)}}
 </style></head><body><div class="wrap">
 <div class="hero">
 <h1>Invest Pilot <span class="badge">iPhone</span></h1>
-<div class="muted">日本株をクラウドで解析して、iPhoneには「今見る候補」だけ表示します。</div>
+<div class="muted">国内株を同じ基準で比較し、「今どの銘柄を見ればいいか」を分かりやすく整理します。</div>
 <div class="summary3" id="signalFilters">
   <div class="summarybox filterbox active" data-signal="all"><div class="t">すべて</div><div class="n" id="allCount">--</div></div>
   <div class="summarybox filterbox" data-signal="strongbuy"><div class="t">🚀 積極買い</div><div class="n good" id="strongBuyCount">--</div></div>
@@ -58,8 +65,26 @@
 <div class="progress"><span id="progressBar"></span></div>
 <span id="cacheState" style="display:none">未同期</span><span id="envState" style="display:none">Safari</span>
 </div>
-<div class="tabs"><button class="tab active" data-pane="screen">候補を見る</button><button class="tab" data-pane="backtest">過去成績</button><button class="tab" data-pane="research">銘柄を調べる</button><button class="tab" data-pane="settings">設定</button></div>
+<div class="tabs"><button class="tab active" data-pane="screen">ホーム</button><button class="tab" data-pane="research">銘柄を調べる</button><button class="tab" data-pane="compare">比較</button><button class="tab" data-pane="backtest">過去成績</button><button class="tab" data-pane="settings">設定</button></div>
 <section id="screen" class="pane active">
+<div class="card">
+  <h2>まず銘柄を探す</h2>
+  <div class="small">証券コードでも会社名でもOK。検索すると、全市場順位・総合点・現在の評価・理由まで表示します。</div>
+  <div class="home-search" style="margin-top:10px">
+    <input id="homeSearch" autocomplete="off" placeholder="例：6857 / アドバンテスト">
+    <button class="btn" id="homeSearchBtn">検索</button>
+  </div>
+  <div class="health-line"><span id="dataHealthDot" class="health-dot"></span><span id="dataHealthText" class="health-text">データ状態を確認中…</span></div>
+  <div class="guide-grid">
+    <div class="guide-step"><b>① 評価を見る</b><span>🚀積極買い〜⛔積極売りの6段階</span></div>
+    <div class="guide-step"><b>② 理由を見る</b><span>過去の値動き・トレンド・売買代金を表示</span></div>
+    <div class="guide-step"><b>③ 必要なら保存</b><span>お気に入り登録・最大3銘柄比較</span></div>
+  </div>
+</div>
+<div class="card">
+  <div class="section-head"><h2>お気に入りの変化</h2><span class="count-label">更新時に自動確認</span></div>
+  <div id="favoriteChanges" class="change-list"><div class="empty-soft">お気に入りを登録すると、評価や順位の変化をここに表示します。</div></div>
+</div>
 <div class="card">
   <div class="section-head"><h2>条件</h2><span class="count-label">条件変更ですぐ再表示</span></div>
   <div class="controls">
@@ -77,6 +102,16 @@
   <button class="btn secondary full" id="moreBtn" style="margin-top:10px">次の20件を見る</button>
 </div>
 <div class="stickybar"><button class="btn" id="syncBtnBottom">最新データ</button><button class="btn secondary" id="compareBtn">半導体あり／なしの過去成績</button></div>
+</section>
+<section id="compare" class="pane">
+<div class="card">
+  <div class="section-head"><h2>銘柄を比較</h2><span class="count-label">最大3銘柄</span></div>
+  <div class="simple-note">銘柄詳細の「＋ 比較に追加」で選んだ銘柄を、総合点・順位・現在の評価・過去リターン・20営業日後の参考値で横並び比較します。</div>
+  <div class="btnrow"><button class="btn secondary" id="compareClearBtn">比較をクリア</button></div>
+</div>
+<div class="card">
+  <div id="compareList" class="compare-list"><div class="empty-soft">まだ比較する銘柄がありません。</div></div>
+</div>
 </section>
 <section id="backtest" class="pane"><div class="card"><h2>過去の成績を確認</h2><div class="simple-note">同じ条件を過去データに当てた場合の結果です。将来の利益を保証するものではありません。</div><div class="controls"><div><label>対象</label><select id="btSemi"><option value="all">半導体を含む</option><option value="exclude">半導体を除く</option><option value="only">半導体だけ</option></select></div><div><label>開始資金</label><input id="btCapital" type="number" min="10000" step="10000" value="100000"></div><div><label>売買単位</label><select id="btLot"><option value="1">1株</option><option value="100">100株</option></select></div><div><label>上位保有数</label><input id="btTop" type="number" min="3" max="30" value="10"></div><div><label>リバランス営業日</label><input id="btDays" type="number" min="10" max="60" value="20"></div><div><label>片道コスト(bp)</label><input id="btCost" type="number" min="0" max="200" value="10"></div></div><div class="btnrow"><button class="btn" id="btRun">この条件で過去成績を見る</button><button class="btn secondary" id="btLoad24">クラウド履歴を再読込</button></div><div id="btMsg" class="msg">過去履歴はクラウドで事前作成済みです。通常は自動で先読みするので、取得操作は不要です。</div></div><div class="card"><div class="metrics" id="btMetrics"><div class="metric"><div class="k">累積</div><div class="v">--</div></div><div class="metric"><div class="k">最終資金</div><div class="v">--</div></div><div class="metric"><div class="k">最大DD</div><div class="v">--</div></div><div class="metric"><div class="k">期間数</div><div class="v">--</div></div></div><canvas id="btChart" width="780" height="260" style="margin-top:12px"></canvas><div id="btCompareTable" class="tablewrap" style="margin-top:10px"></div></div></section>
 <section id="research" class="pane">
@@ -96,7 +131,7 @@
     <button class="btn" id="researchBtn">検索する</button>
     <button class="btn secondary" id="manualSearchBtn">Googleで開く</button>
   </div>
-  <button class="btn secondary full" id="favoriteBtn" style="display:none;margin-top:10px">☆ お気に入りに保存</button>
+  <div class="btnrow" style="margin-top:10px"><button class="btn secondary" id="favoriteBtn" style="display:none">☆ お気に入りに保存</button><button class="btn secondary" id="compareAddBtn" style="display:none">＋ 比較に追加</button></div>
   <div id="researchSummary" class="msg">コードか会社名を入力してください。</div>
   <button class="btn full" id="liveResearchBtn" style="display:none;margin-top:10px">今すぐ調べて評価</button>
 </div>
@@ -106,5 +141,5 @@
 </div>
 <div class="card"><div id="researchResults"></div></div>
 </section>
-<section id="settings" class="pane"><div class="card install"><h2>ホーム画面に追加</h2><div class="small only-browser">Safariの共有ボタン →「ホーム画面に追加」。HTTPSで公開した場合はPWAとして起動できます。</div><div class="small">通常の全銘柄解析はGitHub Actions側で実行し、iPhoneは結果を表示します。</div></div><div class="card"><h2>データ取得</h2><div class="switchline"><div><b>起動時の日次自動更新</b><div class="small">前回同期から24時間以上なら、アプリを開いた時に更新。</div></div><button id="autoToggle" class="switch on" aria-label="自動更新"></button></div><label>価格データ公開ページ</label><input id="sourcePage" class="mono" value="https://softhompo.a.la9.jp/Data/StockData.html"><label>CORSリレー</label><select id="relayMode"><option value="auto">自動（推奨）</option><option value="direct">直接のみ</option><option value="allorigins">AllOrigins</option><option value="corsproxy">corsproxy.io</option><option value="isomorphic">isomorphic-git</option></select><div class="small" style="margin-top:7px">リレーには公開株価URLだけを渡します。証券会社ID・パスワード・APIキーは入力しない設計です。</div><div class="btnrow"><button class="btn secondary" id="clearCacheBtn">保存データ削除</button><button class="btn ghost" id="exportBtn">ランキング書出し</button></div></div><div class="card"><h2>半導体テーマ</h2><div class="small">半導体本体だけでなく、製造装置・検査・材料/部品を広義に含みます。追加コードはカンマ区切り。</div><label>追加コード</label><input id="semiExtra" placeholder="例: 9999,8888"><label>除外コード</label><input id="semiExclude" placeholder="例: 1234"><button class="btn secondary full" id="saveThemeBtn" style="margin-top:10px">テーマ設定を保存</button></div><div class="card"><h2>制約</h2><div class="small">ランキング・ニュース・過去履歴はクラウド側で定期更新します。iPhoneは結果を先読みして表示し、過去成績の計算だけ端末内で行います。</div></div></section>
+<section id="settings" class="pane"><div class="card install"><h2>ホーム画面に追加</h2><div class="small only-browser">Safariの共有ボタン →「ホーム画面に追加」。HTTPSで公開した場合はPWAとして起動できます。</div><div class="small">通常の全銘柄解析はGitHub Actions側で実行し、iPhoneは結果を表示します。</div></div><div class="card"><h2>データ</h2><div class="small">通常は自動更新されるため操作不要です。</div><details class="details-box"><summary>詳細設定を開く</summary><div class="switchline"><div><b>起動時の日次自動更新</b><div class="small">前回同期から24時間以上なら、アプリを開いた時に更新。</div></div><button id="autoToggle" class="switch on" aria-label="自動更新"></button></div><label>価格データ公開ページ</label><input id="sourcePage" class="mono" value="https://softhompo.a.la9.jp/Data/StockData.html"><label>CORSリレー</label><select id="relayMode"><option value="auto">自動（推奨）</option><option value="direct">直接のみ</option><option value="allorigins">AllOrigins</option><option value="corsproxy">corsproxy.io</option><option value="isomorphic">isomorphic-git</option></select><div class="small" style="margin-top:7px">リレーには公開株価URLだけを渡します。証券会社ID・パスワード・APIキーは入力しない設計です。</div><div class="btnrow"><button class="btn secondary" id="clearCacheBtn">保存データ削除</button><button class="btn ghost" id="exportBtn">ランキング書出し</button></div></div></details></div><div class="card"><h2>半導体テーマ</h2><div class="small">半導体本体だけでなく、製造装置・検査・材料/部品を広義に含みます。追加コードはカンマ区切り。</div><label>追加コード</label><input id="semiExtra" placeholder="例: 9999,8888"><label>除外コード</label><input id="semiExclude" placeholder="例: 1234"><button class="btn secondary full" id="saveThemeBtn" style="margin-top:10px">テーマ設定を保存</button></div><div class="card"><h2>制約</h2><div class="small">ランキング・ニュース・過去履歴はクラウド側で定期更新します。iPhoneは結果を先読みして表示し、過去成績の計算だけ端末内で行います。</div></div></section>
 </div><script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script src="core.js"></script><script src="signals.js"></script><script src="ui.js"></script></body></html>
