@@ -5,7 +5,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "data/latest-ranking.json"
       - "scripts/background_research.py"
       - ".github/workflows/research.yml"
   schedule:
@@ -13,6 +12,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   research:
@@ -31,7 +32,27 @@ jobs:
           git config user.name "Invest Pilot Bot"
           git config user.email "actions@users.noreply.github.com"
           git add data/research.json
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "Refresh background research"
           git pull --rebase origin main
           git push
+
+  deploy:
+    needs: research
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
