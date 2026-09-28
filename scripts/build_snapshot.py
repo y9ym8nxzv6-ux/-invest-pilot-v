@@ -44,7 +44,18 @@ class LinkParser(HTMLParser):
             self._href=None; self._txt=[]
 
 def discover():
-    html=get(SOURCE).decode("shift_jis","ignore")
+    raw=get(SOURCE)
+    html=None
+    for enc in ("utf-8","utf-8-sig","cp932","shift_jis"):
+        try:
+            candidate=raw.decode(enc)
+            if "株価データ" in candidate:
+                html=candidate
+                break
+        except UnicodeDecodeError:
+            pass
+    if html is None:
+        html=raw.decode("utf-8","ignore")
     p=LinkParser(); p.feed(html)
     prices=[]
     for section,label,url in p.links:
