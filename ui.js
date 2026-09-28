@@ -9,20 +9,58 @@ if(typeof document!=='undefined'){
   const yen=n=>Number.isFinite(+n)?Math.round(+n).toLocaleString('ja-JP')+'円':'--'; const pct=n=>Number.isFinite(+n)?((+n)*100).toFixed(1)+'%':'--'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const researchJobs=new Map();
   let researchWorker=null;
+  function materialEvaluation(score){
+    score=Number(score)||0;
+    if(score>=8)return {label:'🟢 強いプラス材料',cls:'good'};
+    if(score>=3)return {label:'🟢 プラス材料優勢',cls:'good'};
+    if(score<=-8)return {label:'🔴 強いマイナス材料',cls:'bad'};
+    if(score<=-3)return {label:'🔴 マイナス材料優勢',cls:'bad'};
+    return {label:'⚪ 中立',cls:'warn'};
+  }
+  function normalizeResearch(d){
+    const sig=d?.sig||{};
+    return {
+      score:Number(d?.score??sig.score)||0,
+      positive:d?.positive||sig.positive||[],
+      negative:d?.negative||sig.negative||[],
+      results:d?.results||[],
+      summary:d?.summary||null
+    };
+  }
+  function renderResearchResult(d,sourceLabel='調査結果'){
+    const n=normalizeResearch(d),ev=materialEvaluation(n.score);
+    $('researchSummary').innerHTML=`<b class="${ev.cls}">${ev.label}</b>　材料スコア <b class="${n.score>3?'good':n.score<-3?'bad':'warn'}">${n.score>0?'+':''}${n.score}</b><br><span class="small">${esc(sourceLabel)} · プラス: ${esc(n.positive.join('・')||'なし')} / 注意: ${esc(n.negative.join('・')||'なし')}</span>`;
+    $('researchResults').innerHTML=n.results.length?n.results.map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url||'#')}">${esc(x.title||'')}</a><div class="meta">${esc(x.published||'')}</div></div>`).join(''):'<div class="small">関連ニュースはまだ取得できていません。</div>';
+    $('liveResearchBtn').style.display=n.results.length?'none':'block';
+  }
+  async function liveResearch(){
+    const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
+    if(!code)return;
+    const b=$('liveResearchBtn');
+    b.disabled=true;b.textContent='調査中…';
+    startWait('今すぐニュースを調査中',25);
+    const id=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random();
+    researchJobs.set(id,{code,company});
+    ensureResearchWorker().postMessage({id,code,company});
+  }
   function ensureResearchWorker(){
     if(researchWorker)return researchWorker;
     researchWorker=new Worker('./research-worker.js');
     researchWorker.onmessage=e=>{
       const d=e.data||{}; researchJobs.delete(d.id); stopWait();
-      if(d.code){ try{ localStorage.setItem('ip7_research_'+d.code,JSON.stringify(d)); }catch{} }
+      const b=$('liveResearchBtn'); if(b){b.disabled=false;b.textContent='今すぐ調べて評価'}
+      if(d.code){try{localStorage.setItem('ip7_research_'+d.code,JSON.stringify(d))}catch{}}
       if($('researchCode').value.trim()!==String(d.code||''))return;
       if(!d.ok){
-        $('researchSummary').textContent='バックグラウンド検索失敗：'+(d.error||'取得失敗')+'。Safari検索も使えます。';
+        $('researchSummary').textContent='追加調査に失敗しました。通信状況を確認して、もう一度押してください。';
+        if(b)b.style.display='block';
         return;
       }
-      const sig=d.sig||{score:0,positive:[],negative:[]};
-      $('researchSummary').innerHTML=`バックグラウンド検索 完了　材料スコア <b class="${sig.score>3?'good':sig.score<-3?'bad':'warn'}">${sig.score>0?'+':''}${sig.score}</b><br><span class="small">プラス: ${esc((sig.positive||[]).join('・')||'なし')} / 注意: ${esc((sig.negative||[]).join('・')||'なし')}</span>`;
-      $('researchResults').innerHTML=(d.results||[]).length?(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a></div>`).join(''):'<div class="small">検索結果リンクは抽出できませんでした。</div>';
+      renderResearchResult(d,'今すぐ追加調査');
+      if(!(d.results||[]).length&&b){
+        b.style.display='block';
+        b.textContent='もう一度調べる';
+      }
     };
     return researchWorker;
   }
@@ -210,21 +248,39 @@ if(typeof document!=='undefined'){
   async function runResearch(){
     const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
     if(!code){$('researchSummary').textContent='銘柄コードを入力してください';return}
-    $('researchSummary').textContent='事前取得したニュース・決算を表示中…';
+    $('liveResearchBtn').style.display='none';
+    $('researchSummary').textContent='事前取得したニュース・決算を確認中…';
     try{
       const cloud=await loadCloudResearch();
       const d=cloud?.stocks?.[code];
-      if(!d){
-        $('researchSummary').textContent='この銘柄は事前調査データにありません。下の「Googleで開く」を使ってください。';
-        $('researchResults').innerHTML='';
+      if(d&&(d.results||[]).length){
+        renderResearchResult(d,'クラウド事前調査');
         return;
       }
-      const score=Number(d.score)||0;
-      $('researchSummary').innerHTML=`クラウド調査済み　材料スコア <b class="${score>3?'good':score<-3?'bad':'warn'}">${score>0?'+':''}${score}</b><br><span class="small">プラス: ${esc((d.positive||[]).join('・')||'なし')} / 注意: ${esc((d.negative||[]).join('・')||'なし')}</span>`;
-      $('researchResults').innerHTML=(d.results||[]).length?(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a><div class="meta">${esc(x.published||'')}</div></div>`).join(''):'<div class="small">関連ニュースは見つかりませんでした。</div>';
+      try{
+        const local=JSON.parse(localStorage.getItem('ip7_research_'+code)||'null');
+        if(local?.ok&&(local.results||[]).length){
+          renderResearchResult(local,'前回の追加調査');
+          return;
+        }
+      }catch{}
+      if(d)renderResearchResult(d,'クラウド事前調査');
+      else{
+        $('researchSummary').textContent='事前ニュースがありません。「今すぐ調べて評価」で追加調査できます。';
+        $('researchResults').innerHTML='';
+      }
+      $('liveResearchBtn').style.display='block';
     }catch(e){
-      $('researchSummary').textContent='調査データの読み込みに失敗しました。少し待って再読込してください。';
+      try{
+        const local=JSON.parse(localStorage.getItem('ip7_research_'+code)||'null');
+        if(local?.ok){
+          renderResearchResult(local,'前回の追加調査');
+          return;
+        }
+      }catch{}
+      $('researchSummary').textContent='事前調査データを読めませんでした。「今すぐ調べて評価」を押してください。';
       $('researchResults').innerHTML='';
+      $('liveResearchBtn').style.display='block';
     }
   }
   function manualSearch(){const q=encodeURIComponent(`${$('researchCode').value} ${$('researchCompany').value} 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
@@ -234,7 +290,7 @@ if(typeof document!=='undefined'){
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
-    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=runResearch;$('manualSearchBtn').onclick=manualSearch;
+    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=runResearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
