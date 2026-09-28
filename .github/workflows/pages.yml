@@ -29,6 +29,8 @@ jobs:
           node --check signals.js
           node --check ui.js
           node --check research-worker.js
+      - name: Validate app data
+        run: python scripts/validate_app.py
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
