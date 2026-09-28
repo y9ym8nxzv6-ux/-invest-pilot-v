@@ -172,10 +172,11 @@ def enrich_forecasts(ranked, meta):
     by={x["code"]:x for x in ranked}
     codes=[x["code"] for x in ranked if x["code"] in meta_by]
     batch_size=80
+    history_points={}
     for start in range(0,len(codes),batch_size):
         part=codes[start:start+batch_size]
         tickers=[meta_by[cd]["ticker"] for cd in part]
-        print(f"forecast {start+1}-{min(start+len(part),len(codes))}/{len(codes)}",flush=True)
+        print(f"forecast/history {start+1}-{min(start+len(part),len(codes))}/{len(codes)}",flush=True)
         try:
             d=yf.download(tickers,period="5y",interval="1d",auto_adjust=True,actions=False,threads=True,group_by="ticker",progress=False,timeout=40)
         except Exception as e:
@@ -186,10 +187,47 @@ def enrich_forecasts(ranked, meta):
                     h=d[t] if t in d.columns.get_level_values(0) else None
                 else:
                     h=d if len(tickers)==1 else None
+                if h is None or h.empty:continue
                 fc=forecast_20d(h)
                 if fc:by[cd]["forecast20"]=fc
+
+                hh=h.dropna(subset=["Close"]).tail(560)
+                pts=[]
+                for idx,row in hh.iterrows():
+                    try:
+                        dt=pd.Timestamp(idx)
+                        di=dt.year*10000+dt.month*100+dt.day
+                        cl=float(row["Close"])
+                        if math.isfinite(cl) and cl>0:
+                            pts.append((di,round(cl,4)))
+                    except Exception:
+                        pass
+                if len(pts)>=260:
+                    history_points[cd]=pts
             except Exception as e:
-                print("forecast error",cd,e,flush=True)
+                print("forecast/history error",cd,e,flush=True)
+
+    dates=sorted({dt for pts in history_points.values() for dt,_ in pts})
+    date_index={d:i for i,d in enumerate(dates)}
+    stocks={}
+    for cd,pts in history_points.items():
+        x=by.get(cd,{})
+        closes=[None]*len(dates)
+        for dt,cl in pts:
+            closes[date_index[dt]]=cl
+        stocks[cd]={
+            "company":x.get("company",cd),
+            "market":x.get("market",""),
+            "sector33":x.get("sector33",""),
+            "closes":closes
+        }
+    hist_out={
+        "generated_at":datetime.now(timezone.utc).isoformat(),
+        "dates":dates,
+        "stocks":stocks
+    }
+    (DATA/"backtest-history.json").write_text(json.dumps(hist_out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
+    print("history generated",len(stocks),"stocks x",len(dates),"dates",flush=True)
     return ranked
 
 def main():
