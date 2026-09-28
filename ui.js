@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -42,6 +42,29 @@ if(typeof document!=='undefined'){
     else {const text=IPCore.decodeBytes(u8),def=IPCore.inferDateFromName(link.label,link.kind==='day'?IPCore.parseDateInt(link.key):null);if(isSplit)actions.push(...IPCore.parseSplitDelimitedText(text,link.url));else IPCore.appendRows(priceMap,IPCore.parseDelimitedText(text,def,link.url));}
   }
   const breathe=()=>new Promise(r=>setTimeout(r,0));
+  async function loadCloudSnapshot(){
+    $('topMessage').textContent='クラウドで作成済みの上位100を取得中…';
+    const r=await fetch('./data/latest-ranking.json?ts='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('クラウドランキング未生成: HTTP '+r.status);
+    const d=await r.json();
+    const rows=Array.isArray(d.top100)?d.top100:[];
+    if(!rows.length)throw new Error('クラウドランキングが空です');
+    state.ranked=rows.slice(0,100);
+    state.snapshot={key:'cloud',updatedAt:Date.parse(d.generated_at)||Date.now(),months:0,asof:null,actionCount:0,ranked:state.ranked};
+    state.months=0;
+    renderStatus();renderRows();
+    $('asof').textContent=d.generated_at?new Date(d.generated_at).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'CLOUD';
+    $('cacheState').textContent='Cloud';
+    $('topMessage').textContent='クラウド解析済みの上位100を表示中。iPhone側では重い全銘柄解析をしていません。';
+    return d;
+  }
+  async function loadCloudResearch(){
+    if(state.cloudResearch)return state.cloudResearch;
+    const r=await fetch('./data/research.json?ts='+Date.now(),{cache:'no-store'});
+    if(!r.ok)throw new Error('クラウド調査データ未生成');
+    state.cloudResearch=await r.json();
+    return state.cloudResearch;
+  }
   async function syncData(months=13){
     if(state.busy)return;state.busy=true;toggleBusy(true);setProgress(2,'価格データ公開ページを確認中…');const started=Date.now();
     try{
@@ -76,21 +99,22 @@ if(typeof document!=='undefined'){
   async function runResearch(){
     const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
     if(!code){$('researchSummary').textContent='銘柄コードを入力してください';return}
-    const cached=localStorage.getItem('ip7_research_'+code);
-    if(cached){
-      try{
-        const d=JSON.parse(cached);
-        if(Date.now()-(d.finishedAt||0)<6*60*60*1000&&d.ok){
-          const sig=d.sig||{score:0,positive:[],negative:[]};
-          $('researchSummary').innerHTML=`保存済み調査（6時間以内）　材料スコア <b class="${sig.score>3?'good':sig.score<-3?'bad':'warn'}">${sig.score>0?'+':''}${sig.score}</b><br><span class="small">プラス: ${esc((sig.positive||[]).join('・')||'なし')} / 注意: ${esc((sig.negative||[]).join('・')||'なし')}</span>`;
-          $('researchResults').innerHTML=(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a></div>`).join('');
-        }
-      }catch{}
-    }
+    let shown=false;
+    try{
+      const cloud=await loadCloudResearch();
+      const d=cloud?.stocks?.[code];
+      if(d){
+        shown=true;
+        const score=Number(d.score)||0;
+        $('researchSummary').innerHTML=`クラウド調査済み　材料スコア <b class="${score>3?'good':score<-3?'bad':'warn'}">${score>0?'+':''}${score}</b><br><span class="small">プラス: ${esc((d.positive||[]).join('・')||'なし')} / 注意: ${esc((d.negative||[]).join('・')||'なし')}</span>`;
+        $('researchResults').innerHTML=(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a><div class="meta">${esc(x.published||'')}</div></div>`).join('');
+      }
+    }catch{}
     const id=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random();
     researchJobs.set(id,{code,company});
     ensureResearchWorker().postMessage({id,code,company});
-    $('researchSummary').textContent='バックグラウンドで検索中。ほかの画面を操作してOKです。';
+    if(!shown)$('researchSummary').textContent='バックグラウンドで検索中。ほかの画面を操作してOKです。';
+    else $('researchSummary').insertAdjacentHTML('beforeend','<br><span class="small">追加のライブ検索もバックグラウンドで実行中…</span>');
   }
   function manualSearch(){const q=encodeURIComponent(`${$('researchCode').value} ${$('researchCompany').value} 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
@@ -98,10 +122,10 @@ if(typeof document!=='undefined'){
     $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows()}));
-    $('syncBtn').onclick=()=>syncData(13).catch(()=>{});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=renderRows;$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>syncData(24).then(()=>{$('btMsg').textContent='24か月履歴を読み込みました。このまま検証できます。'}).catch(e=>$('btMsg').textContent='履歴取得エラー：'+e.message);$('researchBtn').onclick=runResearch;$('manualSearchBtn').onclick=manualSearch;
+    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>$('topMessage').textContent='クラウド更新待ち：'+e.message);$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=renderRows;$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>syncData(24).then(()=>{$('btMsg').textContent='24か月履歴を読み込みました。このまま検証できます。'}).catch(e=>$('btMsg').textContent='履歴取得エラー：'+e.message);$('researchBtn').onclick=runResearch;$('manualSearchBtn').onclick=manualSearch;
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
-    const last=+(localStorage.getItem('ip7_last_sync')||0);if(settings.auto&&Date.now()-last>86400000)setTimeout(()=>syncData(13).catch(()=>{}),900);
+    setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
   }
   init();
 }
