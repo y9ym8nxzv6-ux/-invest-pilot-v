@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[]};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -424,6 +424,56 @@ if(typeof document!=='undefined'){
     try{return await state.researchPromise}
     finally{state.researchPromise=null}
   }
+  function strategyDaysLabel(days){
+    const d=Number(days)||20;
+    if(d===10)return '10営業日（約2週間）';
+    if(d===20)return '20営業日（約1か月）';
+    if(d===40)return '40営業日（約2か月）';
+    if(d===60)return '60営業日（約3か月）';
+    if(d===100)return '100営業日（約5か月）';
+    return d+'営業日';
+  }
+  function renderStrategyConfig(){
+    const d=state.strategyConfig;
+    const title=$('strategyAutoTitle'),meta=$('strategyAutoMeta'),table=$('strategyAutoTable');
+    if(!title||!meta||!table)return;
+    if(!d){
+      title.textContent='おすすめの見直し間隔を計算中…';
+      meta.textContent='10・20・40・60・100営業日を複数期間で比較します。';
+      table.innerHTML='';
+      return;
+    }
+    const rec=Number(d.recommended_days)||20;
+    const changed=d.changed&&Number(d.previous_recommended_days)!==rec;
+    title.textContent='自動おすすめ：'+strategyDaysLabel(rec);
+    meta.textContent=(changed?('前回 '+strategyDaysLabel(d.previous_recommended_days)+' → 今回変更。'):'前回から変更なし。')+' 信頼度 '+(d.confidence||'—')+'。微差では設定を変えません。';
+    const auto=$('btDays')&&$('btDays').querySelector('option[value="auto"]');
+    if(auto)auto.textContent='自動（おすすめ：'+strategyDaysLabel(rec)+'）';
+    const rows=(d.evaluations||[]).map(function(x){
+      const cls=Number(x.days)===rec?' class="recommended"':'';
+      const med=Number.isFinite(Number(x.median_annual_return))?pct(Number(x.median_annual_return)):'—';
+      const dd=Number.isFinite(Number(x.worst_max_drawdown))?pct(Number(x.worst_max_drawdown)):'—';
+      return '<tr'+cls+'><td>'+Number(x.days)+'日'+(Number(x.days)===rec?' ✓':'')+'</td><td>'+med+'</td><td>'+dd+'</td><td>'+Number(x.robust_score).toFixed(1)+'</td></tr>';
+    }).join('');
+    table.innerHTML='<table class="strategy-table"><thead><tr><th>見直し間隔</th><th>期間中央値</th><th>最大下落</th><th>安定度</th></tr></thead><tbody>'+rows+'</tbody></table><div class="small" style="margin-top:8px">過去5年を複数期間に分けた比較です。安定度は利益・対ベンチマーク・最大下落・ばらつきをまとめた内部比較値です。</div>';
+  }
+  async function loadStrategyConfig(){
+    if(state.strategyConfig)return state.strategyConfig;
+    if(state.strategyConfigPromise)return state.strategyConfigPromise;
+    state.strategyConfigPromise=(async()=>{
+      const r=await fetch('./data/strategy-config.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('自動改善データ未生成');
+      state.strategyConfig=await r.json();
+      renderStrategyConfig();
+      return state.strategyConfig;
+    })();
+    try{return await state.strategyConfigPromise}finally{state.strategyConfigPromise=null}
+  }
+  function resolvedRebalanceDays(){
+    const v=$('btDays')?$('btDays').value:'auto';
+    if(v!=='auto')return Number(v)||20;
+    return Number(state.strategyConfig&&state.strategyConfig.recommended_days)||20;
+  }
   async function loadCloudHistory(){
     if(state.priceMap&&state.months>=24)return state.priceMap;
     if(state.historyPromise)return state.historyPromise;
@@ -456,6 +506,7 @@ if(typeof document!=='undefined'){
       loadAllAnalysis().catch(()=>{});
       loadCloudResearch().catch(()=>{});
       loadCloudHistory().catch(()=>{});
+      loadStrategyConfig().catch(()=>{});
     },250);
   }
   async function syncData(months=13){
@@ -531,10 +582,33 @@ if(typeof document!=='undefined'){
   function pickResearch(code){const x=state.ranked.find(y=>y.code===code);switchPane('research');if(x)selectStock({code:x.code,company:x.company,market:x.market||'',sector33:x.sector33||''},true);else openStockByCode(code)}
   function switchPane(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.pane===id));document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('active',x.id===id));}
   async function ensureHistory(){if(state.priceMap&&state.months>=24)return;await loadCloudHistory()}
-  async function runBT(modeOverride=null){const b=$('btRun');b.disabled=true;startWait('過去成績を計算中',8);$('btMsg').textContent='過去データで計算中…';try{await ensureHistory(13);const opts={mode:modeOverride||$('btSemi').value,capital:+$('btCapital').value||100000,risk:$('risk').value,lot:+$('btLot').value||1,topN:+$('btTop').value||10,rebalanceDays:+$('btDays').value||20,costBps:+$('btCost').value||10,reserve:.10,theme:settings.theme};const d=IPCore.runBacktest(state.priceMap,opts);renderBT(d);$('btMsg').textContent=`${d.start_date}〜${d.end_date} / ${d.periods}期間 / 買えず見送り ${d.skipped_unaffordable}回`;}catch(e){$('btMsg').textContent='検証エラー：'+e.message}finally{b.disabled=false;stopWait()}}
+  async function runBT(modeOverride=null){
+    const b=$('btRun');b.disabled=true;startWait('過去成績を計算中',8);$('btMsg').textContent='過去データで計算中…';
+    try{
+      await Promise.all([ensureHistory(13),loadStrategyConfig().catch(()=>null)]);
+      const days=resolvedRebalanceDays();
+      const opts={mode:modeOverride||$('btSemi').value,capital:+$('btCapital').value||100000,risk:$('risk').value,lot:+$('btLot').value||1,topN:+$('btTop').value||10,rebalanceDays:days,costBps:+$('btCost').value||10,reserve:.10,theme:settings.theme};
+      const d=IPCore.runBacktest(state.priceMap,opts);
+      renderBT(d);
+      $('btMsg').textContent=d.start_date+'〜'+d.end_date+' / 見直し '+strategyDaysLabel(days)+' / '+d.periods+'期間 / 買えず見送り '+d.skipped_unaffordable+'回';
+    }catch(e){$('btMsg').textContent='検証エラー：'+e.message}
+    finally{b.disabled=false;stopWait()}
+  }
   function renderBT(d){$('btMetrics').innerHTML=`<div class="metric"><div class="k">累積</div><div class="v ${d.total_return>=0?'good':'bad'}">${pct(d.total_return)}</div></div><div class="metric"><div class="k">最終資金</div><div class="v">${yen(d.ending_capital)}</div></div><div class="metric"><div class="k">最大DD</div><div class="v bad">${pct(d.max_drawdown)}</div></div><div class="metric"><div class="k">期間数</div><div class="v">${d.periods}</div></div>`;drawCurve(d.curve);$('btCompareTable').innerHTML=`<div class="small">候補ユニバース等金額ベンチ: ${pct(d.benchmark_return)} / 平均半導体保有 ${d.avg_semiconductor_selected.toFixed(1)}銘柄</div>`}
   function drawCurve(curve){const c=$('btChart'),ctx=c.getContext('2d'),W=c.width,H=c.height;ctx.clearRect(0,0,W,H);ctx.fillStyle='#0a142a';ctx.fillRect(0,0,W,H);if(!curve?.length)return;const vals=curve.flatMap(x=>[x.strategy,x.benchmark]),mn=Math.min(...vals)*.96,mx=Math.max(...vals)*1.04;ctx.strokeStyle='#293b61';ctx.lineWidth=1;for(let i=1;i<5;i++){let y=H*i/5;ctx.beginPath();ctx.moveTo(38,y);ctx.lineTo(W-12,y);ctx.stroke()}function line(k,col){ctx.strokeStyle=col;ctx.lineWidth=3;ctx.beginPath();curve.forEach((x,i)=>{let xx=38+(W-52)*i/(curve.length-1||1),yy=H-18-(H-36)*(x[k]-mn)/(mx-mn||1);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke()}line('strategy','#7aa8ff');line('benchmark','#95a6c2')}
-  async function compareSemi(){switchPane('backtest');startWait('半導体あり／なしを比較中',10);$('btMsg').textContent='半導体を含む場合と、除いた場合の過去成績を比較しています…';try{await ensureHistory(13);const base={capital:+$('capital').value||100000,risk:$('risk').value,lot:+$('lotMode').value||1,topN:10,rebalanceDays:20,costBps:10,reserve:.10,theme:settings.theme};const a=IPCore.runBacktest(state.priceMap,{...base,mode:'all'}),b=IPCore.runBacktest(state.priceMap,{...base,mode:'exclude'});renderBT(a);$('btCompareTable').innerHTML=`<table style="min-width:560px"><thead><tr><th>条件</th><th>最終資金</th><th>累積</th><th>最大DD</th><th>期間</th></tr></thead><tbody><tr><td>半導体を含む</td><td>${yen(a.ending_capital)}</td><td>${pct(a.total_return)}</td><td>${pct(a.max_drawdown)}</td><td>${a.periods}</td></tr><tr><td>半導体を除く</td><td>${yen(b.ending_capital)}</td><td>${pct(b.total_return)}</td><td>${pct(b.max_drawdown)}</td><td>${b.periods}</td></tr></tbody></table>`;$('btMsg').textContent='比較完了。これは過去データでの比較です。'}catch(e){$('btMsg').textContent='比較エラー：'+e.message}finally{stopWait()}}
+  async function compareSemi(){
+    switchPane('backtest');startWait('半導体あり／なしを比較中',10);$('btMsg').textContent='半導体を含む場合と、除いた場合の過去成績を比較しています…';
+    try{
+      await Promise.all([ensureHistory(13),loadStrategyConfig().catch(()=>null)]);
+      const days=resolvedRebalanceDays();
+      const base={capital:+$('capital').value||100000,risk:$('risk').value,lot:+$('lotMode').value||1,topN:10,rebalanceDays:days,costBps:10,reserve:.10,theme:settings.theme};
+      const a=IPCore.runBacktest(state.priceMap,{...base,mode:'all'}),b=IPCore.runBacktest(state.priceMap,{...base,mode:'exclude'});
+      renderBT(a);
+      $('btCompareTable').innerHTML='<table style="min-width:560px"><thead><tr><th>条件</th><th>最終資金</th><th>累積</th><th>最大DD</th><th>期間</th></tr></thead><tbody><tr><td>半導体を含む</td><td>'+yen(a.ending_capital)+'</td><td>'+pct(a.total_return)+'</td><td>'+pct(a.max_drawdown)+'</td><td>'+a.periods+'</td></tr><tr><td>半導体を除く</td><td>'+yen(b.ending_capital)+'</td><td>'+pct(b.total_return)+'</td><td>'+pct(b.max_drawdown)+'</td><td>'+b.periods+'</td></tr></tbody></table>';
+      $('btMsg').textContent='比較完了。見直し間隔は '+strategyDaysLabel(days)+' を使用。';
+    }catch(e){$('btMsg').textContent='比較エラー：'+e.message}
+    finally{stopWait()}
+  }
   async function runResearch(){
     const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
     if(!code){$('researchSummary').textContent='証券コードか会社名で銘柄を検索してください。';return}
@@ -577,11 +651,11 @@ if(typeof document!=='undefined'){
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function init(){
     state.compareCodes=getCompareCodes();
-    $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
+    $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('btDays').value=localStorage.getItem('ip7_bt_days')||'auto';$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
-    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();
+    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();renderStrategyConfig();$('btDays').addEventListener('change',()=>localStorage.setItem('ip7_bt_days',$('btDays').value));
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
