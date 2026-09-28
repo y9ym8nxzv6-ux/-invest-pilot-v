@@ -47,15 +47,16 @@ if(typeof document!=='undefined'){
     const r=await fetch('./data/latest-ranking.json?ts='+Date.now(),{cache:'no-store'});
     if(!r.ok)throw new Error('クラウドランキング未生成: HTTP '+r.status);
     const d=await r.json();
-    const rows=Array.isArray(d.top100)?d.top100:[];
+    const rows=Array.isArray(d.candidates)?d.candidates:(Array.isArray(d.top100)?d.top100:[]);
     if(!rows.length)throw new Error('クラウドランキングが空です');
-    state.ranked=rows.slice(0,100);
+    state.ranked=rows.slice(0,500);
     state.snapshot={key:'cloud',updatedAt:Date.parse(d.generated_at)||Date.now(),months:0,asof:null,actionCount:0,ranked:state.ranked};
     state.months=0;
     renderStatus();renderRows();
     $('asof').textContent=d.generated_at?new Date(d.generated_at).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'CLOUD';
     $('cacheState').textContent='Cloud';
-    $('topMessage').textContent='クラウド解析済みの上位100を表示中。iPhone側では重い全銘柄解析をしていません。';
+    $('scoreCount').textContent=(d.universe_count||state.ranked.length).toLocaleString('ja-JP');
+    $('topMessage').textContent='クラウド解析済み候補から、現在の条件で上位100を表示中。iPhone側では重い全銘柄解析をしていません。';
     return d;
   }
   async function loadCloudResearch(){
