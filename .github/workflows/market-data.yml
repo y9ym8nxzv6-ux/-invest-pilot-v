@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "scripts/build_snapshot.py"
+      - "scripts/background_research.py"
       - ".github/workflows/market-data.yml"
   schedule:
     - cron: "20 7 * * 1-5"
@@ -16,6 +17,8 @@ concurrency:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   snapshot:
@@ -28,14 +31,36 @@ jobs:
           python-version: "3.12"
       - name: Install market-data dependencies
         run: pip install --disable-pip-version-check pandas xlrd yfinance
-      - name: Build top 100
+      - name: Build ranking and 20-day outlook
         run: python scripts/build_snapshot.py
-      - name: Commit refreshed ranking
+      - name: Refresh research cache
+        run: python scripts/background_research.py
+      - name: Commit refreshed data
         run: |
           git config user.name "Invest Pilot Bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/latest-ranking.json
-          git diff --cached --quiet && exit 0
-          git commit -m "Refresh market ranking"
+          git add data/latest-ranking.json data/research.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Refresh market data"
           git pull --rebase origin main
           git push
+
+  deploy:
+    needs: snapshot
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
