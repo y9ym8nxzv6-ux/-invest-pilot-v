@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -14,7 +15,7 @@ UA="Mozilla/5.0 InvestPilotV7"
 POS={"上方修正":4,"最高益":4,"過去最高":4,"増益":2,"増収":2,"増配":3,"自社株買い":3,"大型受注":4,"受注":2,"黒字転換":4,"上振れ":3}
 NEG={"下方修正":-5,"赤字転落":-5,"赤字":-4,"減益":-3,"減収":-2,"不正":-5,"行政処分":-5,"希薄化":-3,"公募増資":-4,"債務超過":-6,"継続企業":-5,"不祥事":-5,"下振れ":-3}
 
-def fetch(url,timeout=25):
+def fetch(url,timeout=15):
     req=urllib.request.Request(url,headers={"User-Agent":UA})
     with urllib.request.urlopen(req,timeout=timeout) as r:return r.read()
 
@@ -47,19 +48,24 @@ def main():
         print("ranking not ready; skip")
         return
     ranking=json.loads(RANKING.read_text(encoding="utf-8"))
-    stocks=ranking.get("top100",[])
-    targets=[x for x in stocks if x.get("timing",{}).get("key") in {"buy","wait"}][:30]
-    if len(targets)<20:
-        seen={x["code"] for x in targets}
-        targets+= [x for x in stocks if x["code"] not in seen][:30-len(targets)]
+    targets=ranking.get("top100",[])[:100]
     out={}
-    for i,s in enumerate(targets,1):
+
+    def work(s):
         try:
-            out[s["code"]]=one(s)
-            print(f"{i}/{len(targets)} {s['code']} ok",flush=True)
+            return s["code"], one(s)
         except Exception as e:
-            out[s["code"]]={"code":s["code"],"company":s["company"],"error":str(e),"results":[]}
-            print(f"{i}/{len(targets)} {s['code']} error {e}",flush=True)
+            return s["code"], {"code":s["code"],"company":s["company"],"error":str(e),"results":[]}
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures=[ex.submit(work,s) for s in targets]
+        done=0
+        for fut in as_completed(futures):
+            code,result=fut.result()
+            out[code]=result
+            done+=1
+            print(f"{done}/{len(targets)} {code}",flush=True)
+
     payload={"generated_at":datetime.now(timezone.utc).isoformat(),"count":len(out),"stocks":out}
     OUT.write_text(json.dumps(payload,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     print("research generated",len(out))
