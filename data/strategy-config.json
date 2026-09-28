@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-28T07:33:26.115Z",
+  "generated_at": "2026-09-28T08:09:14.178Z",
   "optimizer_version": 1,
   "recommended_days": 20,
-  "previous_recommended_days": 100,
-  "changed": true,
+  "previous_recommended_days": 20,
+  "changed": false,
   "confidence": "標準",
   "change_threshold": 3,
   "method": "過去5年のデータを複数期間に分け、10/20/40/60/100営業日をコスト込みで比較。利益・対ベンチマーク・最大下落・期間ごとのばらつき・検証回数を総合評価し、検証回数不足や微差では設定を変更しない。",
@@ -25,29 +25,29 @@
       "windows": [
         {
           "window": "前半",
-          "annual_return": 0.02801109108899702,
-          "annual_benchmark": 0.11155626325295631,
-          "excess_return": -0.08354517216395929,
-          "max_drawdown": -0.26171767569716886,
-          "total_return": 0.0668173934916072,
+          "annual_return": 0.028011124982475044,
+          "annual_benchmark": 0.1115562163117203,
+          "excess_return": -0.08354509132924526,
+          "max_drawdown": -0.26171765697198923,
+          "total_return": 0.06681747584090547,
           "periods": 59
         },
         {
           "window": "中盤",
-          "annual_return": 0.009720117675152906,
-          "annual_benchmark": 0.19197437729392064,
-          "excess_return": -0.18225425961876773,
-          "max_drawdown": -0.3214033087188488,
-          "total_return": 0.02290592978990591,
+          "annual_return": 0.009720176259900404,
+          "annual_benchmark": 0.1919743773064202,
+          "excess_return": -0.1822542010465198,
+          "max_drawdown": -0.32140329336918594,
+          "total_return": 0.022906068743805186,
           "periods": 59
         },
         {
           "window": "直近",
-          "annual_return": 0.02827460222278222,
-          "annual_benchmark": 0.26341554637262066,
-          "excess_return": -0.23514094414983844,
-          "max_drawdown": -0.39195400502789857,
-          "total_return": 0.0674577434432051,
+          "annual_return": 0.028274590501338848,
+          "annual_benchmark": 0.2634155508360645,
+          "excess_return": -0.23514096033472565,
+          "max_drawdown": -0.39195402973449855,
+          "total_return": 0.06745771495440556,
           "periods": 59
         }
       ]
@@ -68,29 +68,29 @@
       "windows": [
         {
           "window": "前半",
-          "annual_return": 0.1524728892149465,
-          "annual_benchmark": 0.17006403820165983,
-          "excess_return": -0.017591148986713323,
-          "max_drawdown": -0.15861023728806423,
-          "total_return": 0.3862720834106048,
+          "annual_return": 0.15247285025560608,
+          "annual_benchmark": 0.17006399480338952,
+          "excess_return": -0.017591144547783433,
+          "max_drawdown": -0.15861026807545053,
+          "total_return": 0.38627197555150317,
           "periods": 29
         },
         {
           "window": "中盤",
-          "annual_return": 0.11114281358409928,
-          "annual_benchmark": 0.20941342845478195,
-          "excess_return": -0.09827061487068267,
-          "max_drawdown": -0.24563439655682406,
-          "total_return": 0.27451038538740247,
+          "annual_return": 0.1111428339673064,
+          "annual_benchmark": 0.20941345877793838,
+          "excess_return": -0.09827062481063198,
+          "max_drawdown": -0.24563435844393233,
+          "total_return": 0.27451043919870144,
           "periods": 29
         },
         {
           "window": "直近",
-          "annual_return": -0.007635242582925028,
-          "annual_benchmark": 0.2286778804757783,
-          "excess_return": -0.23631312305870333,
-          "max_drawdown": -0.25960928300097064,
-          "total_return": -0.0174859239416979,
+          "annual_return": -0.007635222602108138,
+          "annual_benchmark": 0.22867788427218483,
+          "excess_return": -0.23631310687429297,
+          "max_drawdown": -0.2596092731527374,
+          "total_return": -0.017485878410597344,
           "periods": 29
         }
       ]
@@ -111,29 +111,29 @@
       "windows": [
         {
           "window": "前半",
-          "annual_return": 0.0746658118140564,
-          "annual_benchmark": 0.1766746114306288,
-          "excess_return": -0.10200879961657239,
-          "max_drawdown": -0.19099089952727932,
-          "total_return": 0.17353627260730176,
+          "annual_return": 0.0746657886416755,
+          "annual_benchmark": 0.17667459439206556,
+          "excess_return": -0.10200880575039006,
+          "max_drawdown": -0.19099090243646588,
+          "total_return": 0.17353621637560068,
           "periods": 14
         },
         {
           "window": "中盤",
-          "annual_return": 0.23426706726827828,
-          "annual_benchmark": 0.19195504591612322,
-          "excess_return": 0.04231202135215506,
-          "max_drawdown": -0.1355715019075916,
-          "total_return": 0.5963621612370016,
+          "annual_return": 0.23426706323599356,
+          "annual_benchmark": 0.19195506914306004,
+          "excess_return": 0.042311994092933514,
+          "max_drawdown": -0.13557153679688572,
+          "total_return": 0.5963621496476017,
           "periods": 14
         },
         {
           "window": "直近",
-          "annual_return": 0.0705412894204438,
-          "annual_benchmark": 0.22264470421046667,
-          "excess_return": -0.15210341479002287,
-          "max_drawdown": -0.22952144537459918,
-          "total_return": 0.16355088958200192,
+          "annual_return": 0.0705412956575393,
+          "annual_benchmark": 0.22264470409432313,
+          "excess_return": -0.15210340843678383,
+          "max_drawdown": -0.22952141779769897,
+          "total_return": 0.1635509046464021,
           "periods": 14
         }
       ]
@@ -154,29 +154,29 @@
       "windows": [
         {
           "window": "前半",
-          "annual_return": 0.04230266231393354,
-          "annual_benchmark": 0.1767077873716456,
-          "excess_return": -0.13440512505771207,
-          "max_drawdown": -0.09464314109295713,
-          "total_return": 0.09284417992190042,
+          "annual_return": 0.04230266659911752,
+          "annual_benchmark": 0.1767077852337886,
+          "excess_return": -0.13440511863467108,
+          "max_drawdown": -0.09464318177359099,
+          "total_return": 0.09284418954970142,
           "periods": 9
         },
         {
           "window": "中盤",
-          "annual_return": 0.10179139552572702,
-          "annual_benchmark": 0.18914840751403283,
-          "excess_return": -0.08735701198830581,
-          "max_drawdown": -0.07831307673888566,
-          "total_return": 0.23087216164699997,
+          "annual_return": 0.10179139121632375,
+          "annual_benchmark": 0.18914840769811847,
+          "excess_return": -0.08735701648179472,
+          "max_drawdown": -0.07831308491527489,
+          "total_return": 0.23087215133070083,
           "periods": 9
         },
         {
           "window": "直近",
-          "annual_return": 0.11918067491426365,
-          "annual_benchmark": 0.2399868845594555,
-          "excess_return": -0.12080620964519184,
-          "max_drawdown": -0.27043086647579984,
-          "total_return": 0.2728761473370003,
+          "annual_return": 0.11918068696760864,
+          "annual_benchmark": 0.23998689941231444,
+          "excess_return": -0.1208062124447058,
+          "max_drawdown": -0.27043083710019944,
+          "total_return": 0.27287617671260045,
           "periods": 9
         }
       ]
@@ -197,29 +197,29 @@
       "windows": [
         {
           "window": "前半",
-          "annual_return": 0.14199189407366197,
-          "annual_benchmark": 0.24908176414895755,
-          "excess_return": -0.10708987007529558,
-          "max_drawdown": -0.02404326442261351,
-          "total_return": 0.3013998624438001,
+          "annual_return": 0.14199190212961188,
+          "annual_benchmark": 0.24908178952889726,
+          "excess_return": -0.10708988739928538,
+          "max_drawdown": -0.024043208992455267,
+          "total_return": 0.3013998806590008,
           "periods": 5
         },
         {
           "window": "中盤",
-          "annual_return": 0.06017713500193689,
-          "annual_benchmark": 0.19080872995358922,
-          "excess_return": -0.13063159495165233,
-          "max_drawdown": -0.11349638425068542,
-          "total_return": 0.12293349112280016,
+          "annual_return": 0.06017716635854953,
+          "annual_benchmark": 0.19080874279441962,
+          "excess_return": -0.1306315764358701,
+          "max_drawdown": -0.11349635848628936,
+          "total_return": 0.12293355702110031,
           "periods": 5
         },
         {
           "window": "直近",
-          "annual_return": 0.3454883632054815,
-          "annual_benchmark": 0.35681467820443236,
-          "excess_return": -0.01132631499895087,
-          "max_drawdown": -0.10369147659219968,
-          "total_return": 0.8018315145876003,
+          "annual_return": 0.3454883623293674,
+          "annual_benchmark": 0.35681466879580714,
+          "excess_return": -0.011326306466439728,
+          "max_drawdown": -0.10369149000899958,
+          "total_return": 0.8018315122597004,
           "periods": 5
         }
       ]
