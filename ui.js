@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null,fundamentals:null,fundamentalsPromise:null};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -71,6 +71,7 @@ if(typeof document!=='undefined'){
         <div class="head"><div><div class="title">#${esc(a.rank)} ${esc(a.company||master?.company||code)}</div><div class="sub">${esc(code)} · ${esc(a.sector33||a.market||'')}</div></div><button class="compare-remove" data-compare-remove="${esc(code)}">×</button></div>
         <div class="analysis-judge">${esc(sig.label)} · 総合点 ${Number(a.technical_score).toFixed(1)}</div>
         <div class="analysis-reason">${esc(sig.reason)}</div>
+        ${fundamentalHtml(code,true)}
         <div class="compare-grid">
           <div class="compare-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
           <div class="compare-cell"><div class="k">過去60日</div><div class="v ${a.ret60>=0?'good':'bad'}">${pct(a.ret60)}</div></div>
@@ -182,7 +183,8 @@ if(typeof document!=='undefined'){
         <div class="analysis-cell"><div class="k">過去250日</div><div class="v ${a.ret250>=0?'good':'bad'}">${pct(a.ret250)}</div></div>
         ${outlook}
       </div>
-      <div class="explain-box"><b>総合点とは？</b><br>過去の値動き、上昇トレンド、売買代金を国内株で比較した相対評価です。100点に近いほど現在の条件が強いことを示しますが、将来の上昇率を保証する点数ではありません。</div>`;
+      ${fundamentalHtml(a.code,false)}
+      <div class="explain-box"><b>総合点とは？</b><br>過去の値動き、上昇トレンド、売買代金を国内株で比較したモメンタム中心の相対評価です。業績参考は順位に入れていません。100点に近いほど現在の条件が強いことを示しますが、将来の上昇率を保証する点数ではありません。</div>`;
   }
   async function showSelectedAnalysis(code){
     const fallback=state.ranked.find(x=>String(x.code)===String(code));
@@ -474,6 +476,41 @@ if(typeof document!=='undefined'){
     if(v!=='auto')return Number(v)||20;
     return Number(state.strategyConfig&&state.strategyConfig.recommended_days)||20;
   }
+  function fundamentalLabelClass(key){
+    return key==='good'?'good':key==='caution'?'bad':'warn';
+  }
+  function fundamentalHtml(code,compact=false){
+    const f=state.fundamentals&&state.fundamentals.get(String(code));
+    if(!f)return compact?'<div class="stock-reason">業績参考：データ未取得</div>':'<div class="explain-box"><b>業績参考</b><br>この銘柄は定期取得対象外、または業績データ取得前です。総合順位には影響しません。</div>';
+    const cls=fundamentalLabelClass(f.reference_key);
+    const score=Number.isFinite(Number(f.reference_score))?Number(f.reference_score).toFixed(0)+'点':'—';
+    if(compact)return '<div class="stock-reason">業績参考：<b class="'+cls+'">'+esc(f.reference_label||'—')+'</b> '+score+'（順位には不使用）</div>';
+    const cells=[
+      ['売上成長',pct(f.revenueGrowth)],
+      ['利益成長',pct(f.earningsGrowth)],
+      ['ROE',pct(f.returnOnEquity)],
+      ['営業利益率',pct(f.operatingMargins)],
+      ['PER',Number.isFinite(Number(f.trailingPE))?Number(f.trailingPE).toFixed(1)+'倍':'—']
+    ].map(x=>'<div class="analysis-cell"><div class="k">'+x[0]+'</div><div class="v">'+x[1]+'</div></div>').join('');
+    return '<div class="explain-box"><b>業績参考：<span class="'+cls+'">'+esc(f.reference_label||'—')+' '+score+'</span></b><br>モメンタム順位とは別枠の参考情報です。売上成長・利益成長・ROE・営業利益率・PERを見ています。</div><div class="analysis-grid">'+cells+'</div>';
+  }
+  async function loadFundamentals(){
+    if(state.fundamentals)return state.fundamentals;
+    if(state.fundamentalsPromise)return state.fundamentalsPromise;
+    state.fundamentalsPromise=(async()=>{
+      const r=await fetch('./data/fundamentals.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('業績参考データ未生成');
+      const d=await r.json();
+      const map=new Map();
+      for(const [code,x] of Object.entries(d.stocks||{}))map.set(String(code),x);
+      state.fundamentals=map;
+      renderRows();
+      if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
+      renderCompare().catch(()=>{});
+      return map;
+    })();
+    try{return await state.fundamentalsPromise}finally{state.fundamentalsPromise=null}
+  }
   async function loadCloudHistory(){
     if(state.priceMap&&state.months>=24)return state.priceMap;
     if(state.historyPromise)return state.historyPromise;
@@ -507,6 +544,7 @@ if(typeof document!=='undefined'){
       loadCloudResearch().catch(()=>{});
       loadCloudHistory().catch(()=>{});
       loadStrategyConfig().catch(()=>{});
+      loadFundamentals().catch(()=>{});
     },250);
   }
   async function syncData(months=13){
@@ -565,6 +603,7 @@ if(typeof document!=='undefined'){
           <div><div class="k">目安株数</div><div class="v">${x.shares_by_budget>0?x.shares_by_budget+'株':'—'}</div></div>
         </div>
         <div class="stock-reason">${esc(sig.reason)} · 目安枠 ${yen(x.budget_yen)}</div>
+        ${fundamentalHtml(x.code,true)}
         ${forecastHtml(x)}
         <div class="stock-details">
           <div>過去20日<b class="${x.ret20>=0?'up':'down'}">${pct(x.ret20)}</b></div>
