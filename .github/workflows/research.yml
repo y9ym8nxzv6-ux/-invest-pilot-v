@@ -33,4 +33,5 @@ jobs:
           git add data/research.json
           git diff --cached --quiet && exit 0
           git commit -m "Refresh background research [skip ci]"
+          git pull --rebase origin main
           git push
