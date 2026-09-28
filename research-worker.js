@@ -56,7 +56,7 @@ function parseDuck(html){
   return out;
 }
 async function liveSearch(code,company){
-  const terms=\`\${code} \${company||''} 株 決算 上方修正 下方修正 増配 自社株買い\`;
+  const terms=code+' '+(company||'')+' 株 決算 上方修正 下方修正 増配 自社株買い';
   const rss='https://news.google.com/rss/search?q='+encodeURIComponent(terms)+'&hl=ja&gl=JP&ceid=JP:ja';
   let results=[];
   try{results=parseRss(await fetchAny(rss,10000))}catch{}
