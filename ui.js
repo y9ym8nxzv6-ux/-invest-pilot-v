@@ -453,9 +453,9 @@ if(typeof document!=='undefined'){
       const cls=Number(x.days)===rec?' class="recommended"':'';
       const med=Number.isFinite(Number(x.median_annual_return))?pct(Number(x.median_annual_return)):'—';
       const dd=Number.isFinite(Number(x.worst_max_drawdown))?pct(Number(x.worst_max_drawdown)):'—';
-      return '<tr'+cls+'><td>'+Number(x.days)+'日'+(Number(x.days)===rec?' ✓':'')+'</td><td>'+med+'</td><td>'+dd+'</td><td>'+Number(x.robust_score).toFixed(1)+'</td></tr>';
+      return '<tr'+cls+'><td>'+Number(x.days)+'日'+(Number(x.days)===rec?' ✓':'')+'</td><td>'+med+'</td><td>'+dd+'</td><td>'+Number(x.min_periods_per_window||0)+'回</td><td>'+Number(x.robust_score).toFixed(1)+'</td></tr>';
     }).join('');
-    table.innerHTML='<table class="strategy-table"><thead><tr><th>見直し間隔</th><th>期間中央値</th><th>最大下落</th><th>安定度</th></tr></thead><tbody>'+rows+'</tbody></table><div class="small" style="margin-top:8px">過去5年を複数期間に分けた比較です。安定度は利益・対ベンチマーク・最大下落・ばらつきをまとめた内部比較値です。</div>';
+    table.innerHTML='<table class="strategy-table"><thead><tr><th>見直し間隔</th><th>年率中央値</th><th>最大下落</th><th>最低検証回数</th><th>安定度</th></tr></thead><tbody>'+rows+'</tbody></table><div class="small" style="margin-top:8px">過去5年を複数期間に分けた比較です。安定度は利益・対ベンチマーク・最大下落・ばらつきをまとめた内部比較値です。</div>';
   }
   async function loadStrategyConfig(){
     if(state.strategyConfig)return state.strategyConfig;
