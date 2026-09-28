@@ -1,9 +1,12 @@
 {
-  "name": "Invest Pilot V7",
+  "name": "Invest Pilot",
   "short_name": "Invest Pilot",
+  "id": "./",
   "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#07101f",
   "theme_color": "#08101e",
-  "lang": "ja"
+  "lang": "ja",
+  "description": "国内株の総合ランキング、銘柄分析、ニュース材料、比較、過去検証をまとめて確認できる投資分析PWA"
 }
