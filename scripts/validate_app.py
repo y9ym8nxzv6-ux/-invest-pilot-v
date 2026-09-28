@@ -44,6 +44,11 @@ history=load_json(Path("data/backtest-history.json"))
 require(len(history.get("stocks",{}))>=400,"backtest history stock count too small")
 require(len(history.get("dates",[]))>=250,"backtest history date count too small")
 
+fundamentals=load_json(Path("data/fundamentals.json"))
+require(int(fundamentals.get("count",0))>=90,"fundamental cache too small")
+require(int(fundamentals.get("usable_count",0))>=60,"too few usable fundamental rows")
+require(fundamentals.get("ranking_impact")=="none","fundamentals must remain reference-only")
+
 strategy=load_json(Path("data/strategy-config.json"))
 require(int(strategy.get("recommended_days",0)) in (10,20,40,60,100),"invalid recommended rebalance days")
 evals=strategy.get("evaluations",[])
@@ -59,5 +64,7 @@ print({
     "research":research["count"],
     "history_stocks":len(history["stocks"]),
     "history_dates":len(history["dates"]),
+    "fundamentals":fundamentals["count"],
+    "fundamentals_usable":fundamentals["usable_count"],
     "recommended_days":strategy["recommended_days"],
 })
