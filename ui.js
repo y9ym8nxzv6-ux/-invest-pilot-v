@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[]};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -10,6 +10,115 @@ if(typeof document!=='undefined'){
   const researchJobs=new Map();
   let researchWorker=null;
   const normSearch=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').trim();
+  function formatAge(ts){
+    const ms=Date.now()-Number(ts||0);
+    if(!Number.isFinite(ms)||ms<0)return '更新時刻不明';
+    const min=Math.floor(ms/60000);
+    if(min<60)return min<=1?'たった今':min+'分前';
+    const hr=Math.floor(min/60);
+    if(hr<24)return hr+'時間前';
+    return Math.floor(hr/24)+'日前';
+  }
+  function renderDataHealth(){
+    const el=$('dataHealthText'),dot=$('dataHealthDot');
+    if(!el||!dot)return;
+    const ts=state.snapshot?.updatedAt||0;
+    const hours=ts?(Date.now()-ts)/3600000:999;
+    dot.className='health-dot'+(hours<=36?'':hours<=72?' warn':' bad');
+    const count=state.analysisUniverseCount||Number(($('scoreCount')?.textContent||'').replace(/,/g,''))||0;
+    el.textContent=ts?`最終解析 ${formatAge(ts)} · ${count?count.toLocaleString('ja-JP')+'銘柄を分析':''}`:'解析データを読み込み中…';
+  }
+  function getCompareCodes(){
+    try{
+      const v=JSON.parse(localStorage.getItem('ip7_compare')||'[]');
+      return Array.isArray(v)?v.map(String).slice(0,3):[];
+    }catch{return []}
+  }
+  function saveCompareCodes(v){
+    state.compareCodes=[...new Set(v.map(String))].slice(0,3);
+    localStorage.setItem('ip7_compare',JSON.stringify(state.compareCodes));
+  }
+  function updateCompareButton(){
+    const b=$('compareAddBtn'),s=state.selectedStock;
+    if(!b)return;
+    if(!s){b.style.display='none';return}
+    b.style.display='block';
+    const on=getCompareCodes().includes(String(s.code));
+    b.textContent=on?'✓ 比較に追加済み':'＋ 比較に追加';
+  }
+  async function addSelectedToCompare(){
+    const s=state.selectedStock;if(!s)return;
+    let codes=getCompareCodes(),code=String(s.code);
+    if(codes.includes(code)){
+      switchPane('compare');await renderCompare();return;
+    }
+    if(codes.length>=3)codes.shift();
+    codes.push(code);saveCompareCodes(codes);updateCompareButton();
+    switchPane('compare');await renderCompare();
+  }
+  async function renderCompare(){
+    const box=$('compareList');if(!box)return;
+    const codes=getCompareCodes();state.compareCodes=codes;
+    if(!codes.length){box.innerHTML='<div class="empty-soft">まだ比較する銘柄がありません。銘柄詳細から「＋ 比較に追加」を押してください。</div>';return}
+    try{await loadAllAnalysis()}catch{}
+    box.innerHTML=codes.map(code=>{
+      const a=state.allAnalysis?.get(String(code))||state.ranked.find(x=>String(x.code)===String(code));
+      const master=state.stockMaster?.find(x=>String(x.code)===String(code));
+      if(!a)return `<div class="compare-card"><div class="head"><div><div class="title">${esc(master?.company||code)}</div><div class="sub">${esc(code)} · 分析データなし</div></div><button class="compare-remove" data-compare-remove="${esc(code)}">×</button></div></div>`;
+      const sig=(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(a):{label:'🔵 監視',reason:'条件確認中'};
+      const f=a.forecast20;
+      return `<div class="compare-card">
+        <div class="head"><div><div class="title">#${esc(a.rank)} ${esc(a.company||master?.company||code)}</div><div class="sub">${esc(code)} · ${esc(a.sector33||a.market||'')}</div></div><button class="compare-remove" data-compare-remove="${esc(code)}">×</button></div>
+        <div class="analysis-judge">${esc(sig.label)} · 総合点 ${Number(a.technical_score).toFixed(1)}</div>
+        <div class="analysis-reason">${esc(sig.reason)}</div>
+        <div class="compare-grid">
+          <div class="compare-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
+          <div class="compare-cell"><div class="k">過去60日</div><div class="v ${a.ret60>=0?'good':'bad'}">${pct(a.ret60)}</div></div>
+          <div class="compare-cell"><div class="k">過去120日</div><div class="v ${a.ret120>=0?'good':'bad'}">${pct(a.ret120)}</div></div>
+          <div class="compare-cell"><div class="k">過去250日</div><div class="v ${a.ret250>=0?'good':'bad'}">${pct(a.ret250)}</div></div>
+          <div class="compare-cell"><div class="k">20営業日後</div><div class="v">${f?pct(f.median):'—'}</div></div>
+          <div class="compare-cell"><div class="k">類似局面 上昇割合</div><div class="v">${f?Math.round((Number(f.up_rate)||0)*100)+'%':'—'}</div></div>
+        </div>
+      </div>`;
+    }).join('');
+    box.querySelectorAll('[data-compare-remove]').forEach(b=>b.onclick=()=>{saveCompareCodes(getCompareCodes().filter(x=>x!==String(b.dataset.compareRemove)));renderCompare();updateCompareButton()});
+  }
+  async function renderFavoriteChanges(){
+    const box=$('favoriteChanges');if(!box)return;
+    const fav=getFavorites();
+    if(!fav.length){box.innerHTML='<div class="empty-soft">お気に入りを登録すると、評価や順位の変化をここに表示します。</div>';return}
+    try{await loadAllAnalysis()}catch{}
+    let prev={};try{prev=JSON.parse(localStorage.getItem('ip7_favorite_state')||'{}')}catch{}
+    const next={},items=[];
+    for(const f of fav){
+      const a=state.allAnalysis?.get(String(f.code));if(!a)continue;
+      const sig=(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(a):{key:'watch',label:'🔵 監視'};
+      next[f.code]={rank:Number(a.rank),score:Number(a.technical_score),signal:sig.key,label:sig.label};
+      const p=prev[f.code];
+      if(p){
+        const rankDiff=Number(p.rank)-Number(a.rank);
+        const scoreDiff=Number(a.technical_score)-Number(p.score||0);
+        if(p.signal!==sig.key||Math.abs(rankDiff)>=10||Math.abs(scoreDiff)>=3){
+          const parts=[];
+          if(p.signal!==sig.key)parts.push(`${p.label||'前回評価'} → ${sig.label}`);
+          if(Math.abs(rankDiff)>=10)parts.push(`順位 ${rankDiff>0?'+':''}${rankDiff}`);
+          if(Math.abs(scoreDiff)>=3)parts.push(`点数 ${scoreDiff>0?'+':''}${scoreDiff.toFixed(1)}`);
+          items.push(`<div class="change-item" data-change-code="${esc(f.code)}"><b>${esc(a.company||f.company||f.code)}</b><br>${esc(parts.join(' · '))}</div>`);
+        }
+      }else{
+        items.push(`<div class="change-item" data-change-code="${esc(f.code)}"><b>${esc(a.company||f.company||f.code)}</b><br>現在 ${esc(sig.label)} · #${esc(a.rank)} · ${Number(a.technical_score).toFixed(1)}点</div>`);
+      }
+    }
+    localStorage.setItem('ip7_favorite_state',JSON.stringify(next));
+    box.innerHTML=items.length?items.join(''):'<div class="empty-soft">前回から大きな評価変化はありません。</div>';
+    box.querySelectorAll('[data-change-code]').forEach(el=>el.onclick=()=>{switchPane('research');openStockByCode(el.dataset.changeCode)});
+  }
+  async function homeSearch(){
+    const q=$('homeSearch')?.value.trim();if(!q)return;
+    switchPane('research');
+    $('researchQuery').value=q;
+    await resolveSearch();
+  }
   async function loadStockMaster(){
     if(state.stockMaster)return state.stockMaster;
     if(state.stockMasterPromise)return state.stockMasterPromise;
@@ -35,6 +144,9 @@ if(typeof document!=='undefined'){
       for(const x of (d.stocks||[]))map.set(String(x.code),x);
       if(!map.size)throw new Error('全銘柄分析データが空です');
       state.allAnalysis=map;
+      renderDataHealth();
+      setTimeout(()=>renderFavoriteChanges().catch(()=>{}),0);
+      setTimeout(()=>renderCompare().catch(()=>{}),0);
       return map;
     })();
     try{return await state.allAnalysisPromise}finally{state.allAnalysisPromise=null}
@@ -121,7 +233,7 @@ if(typeof document!=='undefined'){
     const i=fav.findIndex(x=>String(x.code)===String(s.code));
     if(i>=0)fav.splice(i,1);
     else fav.unshift({code:s.code,company:s.company||'',market:s.market||'',sector33:s.sector33||''});
-    saveFavorites(fav);renderFavorites();updateFavoriteButton();
+    saveFavorites(fav);renderFavorites();updateFavoriteButton();renderFavoriteChanges().catch(()=>{});
   }
   function updateFavoriteButton(){
     const b=$('favoriteBtn'),s=state.selectedStock;if(!b)return;
@@ -167,6 +279,7 @@ if(typeof document!=='undefined'){
     $('selectedStockInfo').innerHTML=`<div class="nm">${esc(s.company||s.code)}</div><div class="sub">証券コード ${esc(s.code)} · ${esc(s.sector33||s.market||'')}</div>`;
     showSelectedAnalysis(s.code);
     updateFavoriteButton();
+    updateCompareButton();
     if(doResearch)runResearch();
   }
   async function resolveSearch(){
@@ -287,13 +400,14 @@ if(typeof document!=='undefined'){
     const rows=Array.isArray(d.candidates)?d.candidates:(Array.isArray(d.top100)?d.top100:[]);
     if(!rows.length)throw new Error('クラウドランキングが空です');
     state.ranked=rows.slice(0,500);
-    state.snapshot={key:'cloud',updatedAt:Date.parse(d.generated_at)||Date.now(),months:0,asof:null,actionCount:0,ranked:state.ranked};
+    state.snapshot={key:'cloud',updatedAt:Date.parse(d.generated_at)||Date.now(),generatedAt:d.generated_at||null,months:0,asof:null,actionCount:0,ranked:state.ranked};
     state.months=0;
     renderStatus();renderRows();
     $('asof').textContent=d.generated_at?new Date(d.generated_at).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'CLOUD';
     $('cacheState').textContent='Cloud';
     $('scoreCount').textContent=(d.universe_count||state.ranked.length).toLocaleString('ja-JP');
     $('topMessage').textContent='最新の解析結果を表示中。重い全銘柄解析はクラウド側で処理済みです。';
+    renderDataHealth();
     stopWait();
     prefetchCloudAssets();
     return d;
@@ -355,7 +469,7 @@ if(typeof document!=='undefined'){
     }catch(e){console.error(e);setProgress(0,'自動取得エラー：'+e.message+'　保存済みデータは維持しています。');throw e}finally{state.busy=false;toggleBusy(false);stopWait()}
   }
   function toggleBusy(v){['syncBtn','syncBtnBottom','btLoad24'].forEach(id=>{if($(id))$(id).disabled=v})}
-  function renderStatus(){const s=state.snapshot;$('asof').textContent=s?.asof?IPCore.dateIntToISO(s.asof):'DEMO';$('scoreCount').textContent=(state.ranked?.length||0).toLocaleString('ja-JP');$('cacheState').textContent=s?`${s.months}か月`:'未同期';$('envState').textContent=navigator.standalone||matchMedia('(display-mode: standalone)').matches?'PWA':'Safari';}
+  function renderStatus(){const s=state.snapshot;$('asof').textContent=s?.asof?IPCore.dateIntToISO(s.asof):(s?.updatedAt?new Date(s.updatedAt).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'読込前');$('scoreCount').textContent=(state.analysisUniverseCount||state.ranked?.length||0).toLocaleString('ja-JP');$('cacheState').textContent=s?'Cloud':'未同期';$('envState').textContent=navigator.standalone||matchMedia('(display-mode: standalone)').matches?'PWA':'Safari';renderDataHealth();}
   function forecastHtml(x){
     const f=x.forecast20;
     if(!f)return '<div class="forecast-box"><div class="forecast-title">20営業日後の参考見込み</div><div class="forecast-meta">類似パターンを計算中／データ不足</div></div>';
@@ -462,11 +576,12 @@ if(typeof document!=='undefined'){
   function manualSearch(){const raw=$('researchCode').value?`${$('researchCode').value} ${$('researchCompany').value}`:$('researchQuery').value;const q=encodeURIComponent(`${raw} 株 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function init(){
+    state.compareCodes=getCompareCodes();
     $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
-    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();
+    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
