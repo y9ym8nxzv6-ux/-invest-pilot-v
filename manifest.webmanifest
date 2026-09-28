@@ -1,0 +1,9 @@
+{
+  "name": "Invest Pilot V7",
+  "short_name": "Invest Pilot",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#07101f",
+  "theme_color": "#08101e",
+  "lang": "ja"
+}
