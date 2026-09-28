@@ -44,6 +44,12 @@ history=load_json(Path("data/backtest-history.json"))
 require(len(history.get("stocks",{}))>=400,"backtest history stock count too small")
 require(len(history.get("dates",[]))>=250,"backtest history date count too small")
 
+strategy=load_json(Path("data/strategy-config.json"))
+require(int(strategy.get("recommended_days",0)) in (10,20,40,60,100),"invalid recommended rebalance days")
+evals=strategy.get("evaluations",[])
+require(len(evals)==5,"strategy optimizer must compare five intervals")
+require(all("robust_score" in x and "min_periods_per_window" in x for x in evals),"optimizer output incomplete")
+
 print("APP VALIDATION PASS")
 print({
     "top100":len(ranking["top100"]),
@@ -53,4 +59,5 @@ print({
     "research":research["count"],
     "history_stocks":len(history["stocks"]),
     "history_dates":len(history["dates"]),
+    "recommended_days":strategy["recommended_days"],
 })
