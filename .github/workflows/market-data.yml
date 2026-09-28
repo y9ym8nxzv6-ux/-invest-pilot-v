@@ -10,6 +10,10 @@ on:
   schedule:
     - cron: "20 7 * * 1-5"
 
+concurrency:
+  group: market-snapshot
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
