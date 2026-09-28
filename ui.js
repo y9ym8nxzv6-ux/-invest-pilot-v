@@ -7,6 +7,25 @@ if(typeof document!=='undefined'){
     get theme(){return {extra:(localStorage.getItem('ip7_semi_extra')||'').split(',').map(x=>x.trim()).filter(Boolean),exclude:(localStorage.getItem('ip7_semi_exclude')||'').split(',').map(x=>x.trim()).filter(Boolean)}}
   };
   const yen=n=>Number.isFinite(+n)?Math.round(+n).toLocaleString('ja-JP')+'円':'--'; const pct=n=>Number.isFinite(+n)?((+n)*100).toFixed(1)+'%':'--'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const researchJobs=new Map();
+  let researchWorker=null;
+  function ensureResearchWorker(){
+    if(researchWorker)return researchWorker;
+    researchWorker=new Worker('./research-worker.js');
+    researchWorker.onmessage=e=>{
+      const d=e.data||{}; researchJobs.delete(d.id);
+      if(d.code){ try{ localStorage.setItem('ip7_research_'+d.code,JSON.stringify(d)); }catch{} }
+      if($('researchCode').value.trim()!==String(d.code||''))return;
+      if(!d.ok){
+        $('researchSummary').textContent='バックグラウンド検索失敗：'+(d.error||'取得失敗')+'。Safari検索も使えます。';
+        return;
+      }
+      const sig=d.sig||{score:0,positive:[],negative:[]};
+      $('researchSummary').innerHTML=`バックグラウンド検索 完了　材料スコア <b class="${sig.score>3?'good':sig.score<-3?'bad':'warn'}">${sig.score>0?'+':''}${sig.score}</b><br><span class="small">プラス: ${esc((sig.positive||[]).join('・')||'なし')} / 注意: ${esc((sig.negative||[]).join('・')||'なし')}</span>`;
+      $('researchResults').innerHTML=(d.results||[]).length?(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a></div>`).join(''):'<div class="small">検索結果リンクは抽出できませんでした。</div>';
+    };
+    return researchWorker;
+  }
   function setProgress(p,msg){$('progressBar').style.width=Math.max(0,Math.min(100,p))+'%';if(msg)$('topMessage').textContent=msg}
   function relayUrls(url){const mode=settings.relay;const all={direct:url,allorigins:'https://api.allorigins.win/raw?url='+encodeURIComponent(url),corsproxy:'https://corsproxy.io/?url='+encodeURIComponent(url),isomorphic:'https://cors.isomorphic-git.org/'+url}; if(mode!=='auto')return [all[mode]||url];return [all.direct,all.corsproxy,all.allorigins,all.isomorphic]}
   async function fetchAny(url,{binary=false,timeout=30000,useCache=true}={}){
@@ -35,8 +54,17 @@ if(typeof document!=='undefined'){
   }
   function toggleBusy(v){['syncBtn','syncBtnBottom','btLoad24'].forEach(id=>{if($(id))$(id).disabled=v})}
   function renderStatus(){const s=state.snapshot;$('asof').textContent=s?.asof?IPCore.dateIntToISO(s.asof):'DEMO';$('scoreCount').textContent=(state.ranked?.length||0).toLocaleString('ja-JP');$('cacheState').textContent=s?`${s.months}か月`:'未同期';$('envState').textContent=navigator.standalone||matchMedia('(display-mode: standalone)').matches?'PWA':'Safari';}
-  function currentRows(){const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;return IPCore.decorateForCapital(state.ranked,capital,risk,lot,mode).slice(0,40)}
-  function renderRows(){const rows=currentRows();$('rows').innerHTML=rows.length?rows.map(x=>`<tr data-code="${esc(x.code)}"><td><div class="name">#${x.rank} ${esc(x.company||x.code)}${x.is_semiconductor?'<span class="badge semi">半導体</span>':''}${x.adjustment_events?'<span class="badge">分割調整</span>':''}</div><div class="meta">${esc(x.code)} · ${esc(x.market||'')} · ${esc(x.sector33||'')}</div></td><td class="score ${x.technical_score>=80?'good':x.technical_score<60?'bad':'warn'}">${(+x.technical_score).toFixed(1)}</td><td>${yen(x.close)}</td><td class="${x.ret20>=0?'up':'down'}">${pct(x.ret20)}</td><td class="${x.ret60>=0?'up':'down'}">${pct(x.ret60)}</td><td class="${x.ret120>=0?'up':'down'}">${pct(x.ret120)}</td><td class="${x.ret250>=0?'up':'down'}">${pct(x.ret250)}</td><td><b>${yen(x.budget_yen)}</b></td><td>${x.shares_by_budget>0?x.shares_by_budget:'—'}</td></tr>`).join(''):'<tr><td colspan="9">該当候補なし</td></tr>';document.querySelectorAll('#rows tr[data-code]').forEach(tr=>tr.onclick=()=>pickResearch(tr.dataset.code));saveBasicSettings();}
+  function currentRows(){const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;return IPCore.decorateForCapital(state.ranked,capital,risk,lot,mode).slice(0,100)}
+  function renderRows(){
+    const rows=currentRows();
+    $('rows').innerHTML=rows.length?rows.map(x=>{
+      const sig=(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(x):{key:'watch',label:'🔵 監視',reason:'条件確認中'};
+      const sigClass=sig.key==='buy'?'good':sig.key==='avoid'?'bad':sig.key==='wait'?'warn':'';
+      return `<tr data-code="${esc(x.code)}"><td><div class="name">#${x.rank} ${esc(x.company||x.code)}${x.is_semiconductor?'<span class="badge semi">半導体</span>':''}${x.adjustment_events?'<span class="badge">分割調整</span>':''}</div><div class="meta">${esc(x.code)} · ${esc(x.market||'')} · ${esc(x.sector33||'')}</div></td><td><div class="${sigClass}" style="font-weight:850">${sig.label}</div><div class="meta">${esc(sig.reason)}</div></td><td class="score ${x.technical_score>=80?'good':x.technical_score<60?'bad':'warn'}">${(+x.technical_score).toFixed(1)}</td><td>${yen(x.close)}</td><td class="${x.ret20>=0?'up':'down'}">${pct(x.ret20)}</td><td class="${x.ret60>=0?'up':'down'}">${pct(x.ret60)}</td><td class="${x.ret120>=0?'up':'down'}">${pct(x.ret120)}</td><td class="${x.ret250>=0?'up':'down'}">${pct(x.ret250)}</td><td><b>${yen(x.budget_yen)}</b></td><td>${x.shares_by_budget>0?x.shares_by_budget:'—'}</td></tr>`;
+    }).join(''):'<tr><td colspan="10">該当候補なし</td></tr>';
+    document.querySelectorAll('#rows tr[data-code]').forEach(tr=>tr.onclick=()=>pickResearch(tr.dataset.code));
+    saveBasicSettings();
+  }
   function saveBasicSettings(){localStorage.setItem('ip7_capital',$('capital').value);localStorage.setItem('ip7_risk',$('risk').value);localStorage.setItem('ip7_semi',$('semiMode').value);localStorage.setItem('ip7_lot',$('lotMode').value)}
   function pickResearch(code){const x=state.ranked.find(y=>y.code===code);$('researchCode').value=code;$('researchCompany').value=x?.company||'';switchPane('research')}
   function switchPane(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.pane===id));document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('active',x.id===id));}
@@ -45,7 +73,25 @@ if(typeof document!=='undefined'){
   function renderBT(d){$('btMetrics').innerHTML=`<div class="metric"><div class="k">累積</div><div class="v ${d.total_return>=0?'good':'bad'}">${pct(d.total_return)}</div></div><div class="metric"><div class="k">最終資金</div><div class="v">${yen(d.ending_capital)}</div></div><div class="metric"><div class="k">最大DD</div><div class="v bad">${pct(d.max_drawdown)}</div></div><div class="metric"><div class="k">期間数</div><div class="v">${d.periods}</div></div>`;drawCurve(d.curve);$('btCompareTable').innerHTML=`<div class="small">候補ユニバース等金額ベンチ: ${pct(d.benchmark_return)} / 平均半導体保有 ${d.avg_semiconductor_selected.toFixed(1)}銘柄</div>`}
   function drawCurve(curve){const c=$('btChart'),ctx=c.getContext('2d'),W=c.width,H=c.height;ctx.clearRect(0,0,W,H);ctx.fillStyle='#0a142a';ctx.fillRect(0,0,W,H);if(!curve?.length)return;const vals=curve.flatMap(x=>[x.strategy,x.benchmark]),mn=Math.min(...vals)*.96,mx=Math.max(...vals)*1.04;ctx.strokeStyle='#293b61';ctx.lineWidth=1;for(let i=1;i<5;i++){let y=H*i/5;ctx.beginPath();ctx.moveTo(38,y);ctx.lineTo(W-12,y);ctx.stroke()}function line(k,col){ctx.strokeStyle=col;ctx.lineWidth=3;ctx.beginPath();curve.forEach((x,i)=>{let xx=38+(W-52)*i/(curve.length-1||1),yy=H-18-(H-36)*(x[k]-mn)/(mx-mn||1);i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.stroke()}line('strategy','#7aa8ff');line('benchmark','#95a6c2')}
   async function compareSemi(){switchPane('backtest');$('btMsg').textContent='「半導体込み」と「除外」を順番に検証中…';try{await ensureHistory(13);const base={capital:+$('capital').value||100000,risk:$('risk').value,lot:+$('lotMode').value||1,topN:10,rebalanceDays:20,costBps:10,reserve:.10,theme:settings.theme};const a=IPCore.runBacktest(state.priceMap,{...base,mode:'all'}),b=IPCore.runBacktest(state.priceMap,{...base,mode:'exclude'});renderBT(a);$('btCompareTable').innerHTML=`<table style="min-width:560px"><thead><tr><th>条件</th><th>最終資金</th><th>累積</th><th>最大DD</th><th>期間</th></tr></thead><tbody><tr><td>半導体込み</td><td>${yen(a.ending_capital)}</td><td>${pct(a.total_return)}</td><td>${pct(a.max_drawdown)}</td><td>${a.periods}</td></tr><tr><td>半導体除外</td><td>${yen(b.ending_capital)}</td><td>${pct(b.total_return)}</td><td>${pct(b.max_drawdown)}</td><td>${b.periods}</td></tr></tbody></table>`;$('btMsg').textContent='比較完了。これは予測ではなく、取得済み過去データでの比較です。'}catch(e){$('btMsg').textContent='比較エラー：'+e.message}}
-  async function runResearch(){const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();if(!code){$('researchSummary').textContent='銘柄コードを入力してください';return}$('researchSummary').textContent='公開Web検索を確認中…';const q=encodeURIComponent(`${code} ${company} 決算 上方修正 下方修正 最新ニュース`),url='https://html.duckduckgo.com/html/?q='+q;try{const html=await fetchAny(url,{binary:false,timeout:20000,useCache:false});const text=IPCore.stripTags(html),sig=IPCore.classifyText(text);const results=[];const re=/<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;let m;while((m=re.exec(html))&&results.length<8)results.push({url:IPCore.htmlDecode?IPCore.htmlDecode(m[1]):m[1],title:IPCore.stripTags(m[2])});$('researchSummary').innerHTML=`材料スコア <b class="${sig.score>3?'good':sig.score<-3?'bad':'warn'}">${sig.score>0?'+':''}${sig.score}</b><br><span class="small">プラス: ${esc(sig.positive.join('・')||'なし')} / 注意: ${esc(sig.negative.join('・')||'なし')}</span>`;$('researchResults').innerHTML=results.length?results.map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a></div>`).join(''):'<div class="small">検索本文は解析できましたが、結果リンクは抽出できませんでした。</div>';}catch(e){$('researchSummary').textContent='自動検索に失敗しました。Safari検索を使ってください。';$('researchResults').innerHTML=''} }
+  async function runResearch(){
+    const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
+    if(!code){$('researchSummary').textContent='銘柄コードを入力してください';return}
+    const cached=localStorage.getItem('ip7_research_'+code);
+    if(cached){
+      try{
+        const d=JSON.parse(cached);
+        if(Date.now()-(d.finishedAt||0)<6*60*60*1000&&d.ok){
+          const sig=d.sig||{score:0,positive:[],negative:[]};
+          $('researchSummary').innerHTML=`保存済み調査（6時間以内）　材料スコア <b class="${sig.score>3?'good':sig.score<-3?'bad':'warn'}">${sig.score>0?'+':''}${sig.score}</b><br><span class="small">プラス: ${esc((sig.positive||[]).join('・')||'なし')} / 注意: ${esc((sig.negative||[]).join('・')||'なし')}</span>`;
+          $('researchResults').innerHTML=(d.results||[]).map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url)}">${esc(x.title)}</a></div>`).join('');
+        }
+      }catch{}
+    }
+    const id=crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random();
+    researchJobs.set(id,{code,company});
+    ensureResearchWorker().postMessage({id,code,company});
+    $('researchSummary').textContent='バックグラウンドで検索中。ほかの画面を操作してOKです。';
+  }
   function manualSearch(){const q=encodeURIComponent(`${$('researchCode').value} ${$('researchCompany').value} 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function init(){
