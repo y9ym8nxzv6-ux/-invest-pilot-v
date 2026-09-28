@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitEnd:0};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitEnd:0,signalFilter:'all'};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -99,6 +99,16 @@ if(typeof document!=='undefined'){
   }
   function toggleBusy(v){['syncBtn','syncBtnBottom','btLoad24'].forEach(id=>{if($(id))$(id).disabled=v})}
   function renderStatus(){const s=state.snapshot;$('asof').textContent=s?.asof?IPCore.dateIntToISO(s.asof):'DEMO';$('scoreCount').textContent=(state.ranked?.length||0).toLocaleString('ja-JP');$('cacheState').textContent=s?`${s.months}か月`:'未同期';$('envState').textContent=navigator.standalone||matchMedia('(display-mode: standalone)').matches?'PWA':'Safari';}
+  function forecastHtml(x){
+    const f=x.forecast20;
+    if(!f)return '<div class="forecast-box"><div class="forecast-title">20営業日後の参考見込み</div><div class="forecast-meta">類似パターンを計算中／データ不足</div></div>';
+    const rangeClass=Number(f.range_high)>=0?'good':'bad';
+    return '<div class="forecast-box">'+
+      '<div class="forecast-title">20営業日後の参考見込み（過去の類似局面）</div>'+
+      '<div class="forecast-main"><div class="forecast-range '+rangeClass+'">'+pct(f.range_low)+' 〜 '+pct(f.range_high)+'</div>'+
+      '<div class="forecast-up">上昇割合 '+Math.round((Number(f.up_rate)||0)*100)+'%</div></div>'+
+      '<div class="forecast-meta">中央値 '+pct(f.median)+' · 類似 '+esc(f.samples)+'例 · 信頼度 '+esc(f.confidence||'—')+'</div></div>';
+  }
   function currentRows(){
     const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;
     return IPCore.decorateForCapital(state.ranked,capital,risk,lot,mode).slice(0,100);
@@ -107,16 +117,21 @@ if(typeof document!=='undefined'){
     if(resetVisible)state.visibleCount=20;
     const rows=currentRows();
     const withSig=rows.map(x=>({...x,_sig:(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(x):{key:'watch',label:'🔵 監視',reason:'条件確認中'}}));
-    const counts={buy:0,wait:0,watch:0,avoid:0};
+    const counts={strongbuy:0,buy:0,wait:0,watch:0,avoid:0,strongsell:0};
     withSig.forEach(x=>counts[x._sig.key]=(counts[x._sig.key]||0)+1);
+    $('allCount').textContent=withSig.length;
+    $('strongBuyCount').textContent=counts.strongbuy||0;
     $('buyCount').textContent=counts.buy||0;
     $('waitCount').textContent=counts.wait||0;
     $('watchCount').textContent=counts.watch||0;
-    const shown=withSig.slice(0,state.visibleCount);
-    $('shownCount').textContent=`${shown.length} / ${withSig.length}件`;
+    $('avoidCount').textContent=counts.avoid||0;
+    $('strongSellCount').textContent=counts.strongsell||0;
+    const filtered=state.signalFilter==='all'?withSig:withSig.filter(x=>x._sig.key===state.signalFilter);
+    const shown=filtered.slice(0,state.visibleCount);
+    $('shownCount').textContent=`${shown.length} / ${filtered.length}件`;
     $('stockCards').innerHTML=shown.length?shown.map(x=>{
       const sig=x._sig;
-      const sigClass=sig.key==='buy'?'buy':sig.key==='avoid'?'avoid':sig.key==='wait'?'wait':'watch';
+      const sigClass=sig.key==='strongbuy'?'strongbuy':sig.key==='buy'?'buy':sig.key==='strongsell'?'strongsell':sig.key==='avoid'?'avoid':sig.key==='wait'?'wait':'watch';
       return `<article class="stock-card" data-code="${esc(x.code)}">
         <div class="stock-top">
           <div><div class="stock-title">#${x.rank} ${esc(x.company||x.code)}${x.is_semiconductor?'<span class="badge semi">半導体</span>':''}</div><div class="stock-code">${esc(x.code)} · ${esc(x.sector33||x.market||'')}</div></div>
@@ -128,16 +143,17 @@ if(typeof document!=='undefined'){
           <div><div class="k">目安株数</div><div class="v">${x.shares_by_budget>0?x.shares_by_budget+'株':'—'}</div></div>
         </div>
         <div class="stock-reason">${esc(sig.reason)} · 目安枠 ${yen(x.budget_yen)}</div>
+        ${forecastHtml(x)}
         <div class="stock-details">
-          <div>20日<b class="${x.ret20>=0?'up':'down'}">${pct(x.ret20)}</b></div>
-          <div>60日<b class="${x.ret60>=0?'up':'down'}">${pct(x.ret60)}</b></div>
-          <div>120日<b class="${x.ret120>=0?'up':'down'}">${pct(x.ret120)}</b></div>
-          <div>250日<b class="${x.ret250>=0?'up':'down'}">${pct(x.ret250)}</b></div>
+          <div>過去20日<b class="${x.ret20>=0?'up':'down'}">${pct(x.ret20)}</b></div>
+          <div>過去60日<b class="${x.ret60>=0?'up':'down'}">${pct(x.ret60)}</b></div>
+          <div>過去120日<b class="${x.ret120>=0?'up':'down'}">${pct(x.ret120)}</b></div>
+          <div>過去250日<b class="${x.ret250>=0?'up':'down'}">${pct(x.ret250)}</b></div>
         </div>
       </article>`;
     }).join(''):'<div class="simple-note">この条件では候補がありません。</div>';
     document.querySelectorAll('.stock-card[data-code]').forEach(el=>el.onclick=()=>pickResearch(el.dataset.code));
-    $('moreBtn').style.display=state.visibleCount<withSig.length?'block':'none';
+    $('moreBtn').style.display=state.visibleCount<filtered.length?'block':'none';
     saveBasicSettings();
   }
   function saveBasicSettings(){localStorage.setItem('ip7_capital',$('capital').value);localStorage.setItem('ip7_risk',$('risk').value);localStorage.setItem('ip7_semi',$('semiMode').value);localStorage.setItem('ip7_lot',$('lotMode').value)}
@@ -174,7 +190,8 @@ if(typeof document!=='undefined'){
   async function init(){
     $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
-    document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
+    document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
+    document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
     $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>syncData(24).then(()=>{$('btMsg').textContent='24か月履歴を読み込みました。このまま検証できます。'}).catch(e=>$('btMsg').textContent='履歴取得エラー：'+e.message);$('researchBtn').onclick=runResearch;$('manualSearchBtn').onclick=manualSearch;
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
