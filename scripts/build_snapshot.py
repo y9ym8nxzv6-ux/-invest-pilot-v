@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import io, json, math, urllib.request
+import io, json, math, re, urllib.request, urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -8,7 +8,7 @@ import yfinance as yf
 
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"; DATA.mkdir(exist_ok=True)
-JPX_LIST="https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xls"
+JPX_PAGE="https://www.jpx.co.jp/markets/statistics-equities/misc/01.html"
 
 SEMI=set("""
 285A 6526 6723 6963 6146 6227 6235 6298 6315 6323 6337 6387 6855 6857 6871 6875 7725 7729 7735 8035
@@ -16,8 +16,19 @@ SEMI=set("""
 """.split())
 
 def get_jpx_list():
-    req=urllib.request.Request(JPX_LIST,headers={"User-Agent":"Mozilla/5.0 InvestPilotV7"})
-    with urllib.request.urlopen(req,timeout=40) as r: raw=r.read()
+    req=urllib.request.Request(JPX_PAGE,headers={"User-Agent":"Mozilla/5.0 InvestPilotV7"})
+    with urllib.request.urlopen(req,timeout=40) as r:
+        page=r.read().decode("utf-8","ignore")
+    matches=re.findall(r'href=["\\']([^"\\']*data[^"\\']*\\.xls[x]?[^"\\']*)["\\']',page,re.I)
+    if not matches:
+        matches=re.findall(r'href=["\\']([^"\\']*\\.xls[x]?[^"\\']*)["\\']',page,re.I)
+    if not matches:
+        raise RuntimeError("JPX listed-issues Excel link not found")
+    excel_url=urllib.parse.urljoin("https://www.jpx.co.jp",matches[0])
+    print("JPX list:",excel_url,flush=True)
+    req=urllib.request.Request(excel_url,headers={"User-Agent":"Mozilla/5.0 InvestPilotV7"})
+    with urllib.request.urlopen(req,timeout=40) as r:
+        raw=r.read()
     df=pd.read_excel(io.BytesIO(raw),dtype=str)
     df.columns=[str(x).strip() for x in df.columns]
     code_col=next(c for c in df.columns if "コード" in c)
@@ -26,13 +37,13 @@ def get_jpx_list():
     sector_col=next((c for c in df.columns if "33業種区分" in c),None)
     rows=[]
     for _,r in df.iterrows():
-        code=str(r.get(code_col,"")).strip().replace(".0","")
-        if len(code)!=4 or not code.isdigit(): continue
+        cd=str(r.get(code_col,"")).strip().replace(".0","").upper()
+        if not re.fullmatch(r"[0-9A-Z]{4}",cd): continue
         market=str(r.get(market_col,"")) if market_col else ""
         if market_col and "内国株式" not in market: continue
         rows.append({
-            "code":code,
-            "ticker":code+".T",
+            "code":cd,
+            "ticker":cd+".T",
             "company":str(r.get(name_col,"")).strip(),
             "market":market,
             "sector33":str(r.get(sector_col,"")).strip() if sector_col else ""
