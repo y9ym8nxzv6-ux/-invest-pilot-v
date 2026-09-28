@@ -111,12 +111,94 @@ def rank(raw):
     for i,x in enumerate(raw,1):x["rank"]=i
     return raw[:500]
 
+
+def _feature_at(close, i):
+    c=float(close.iloc[i])
+    if i<60 or c<=0:return None
+    def r(n):
+        base=float(close.iloc[i-n])
+        return c/base-1 if base>0 else 0.0
+    ma20=float(close.iloc[i-19:i+1].mean())
+    ma60=float(close.iloc[i-59:i+1].mean())
+    return (r(5),r(20),r(60),c/ma20-1 if ma20>0 else 0.0,c/ma60-1 if ma60>0 else 0.0)
+
+def forecast_20d(hist):
+    if hist is None or hist.empty:return None
+    h=hist.dropna(subset=["Close"]).copy()
+    close=h["Close"].astype(float).reset_index(drop=True)
+    if len(close)<340:return None
+    cur=_feature_at(close,len(close)-1)
+    if cur is None:return None
+
+    # 距離を各指標の通常変動幅で標準化。過去類似局面同士の重複を減らすため5日刻みで探索。
+    scales=(0.05,0.10,0.18,0.06,0.10)
+    analogs=[]
+    last_hist_idx=len(close)-22
+    for i in range(250,last_hist_idx+1,5):
+        feat=_feature_at(close,i)
+        if feat is None:continue
+        dist=math.sqrt(sum(((feat[j]-cur[j])/scales[j])**2 for j in range(len(scales))))
+        base=float(close.iloc[i]);future=float(close.iloc[i+20])
+        if base<=0 or future<=0:continue
+        analogs.append((dist,future/base-1))
+    if len(analogs)<12:return None
+    analogs.sort(key=lambda x:x[0])
+    chosen=analogs[:min(30,len(analogs))]
+    vals=sorted(v for _,v in chosen)
+    n=len(vals)
+    def quantile(q):
+        if n==1:return vals[0]
+        p=(n-1)*q; lo=int(math.floor(p)); hi=int(math.ceil(p))
+        if lo==hi:return vals[lo]
+        return vals[lo]*(hi-p)+vals[hi]*(p-lo)
+    up=sum(v>0 for v in vals)/n
+    median=quantile(.50)
+    q25=quantile(.25); q75=quantile(.75)
+    spread=q75-q25
+    confidence="高め" if n>=25 and spread<=0.18 else ("標準" if n>=18 and spread<=0.30 else "低め")
+    return {
+        "days":20,
+        "range_low":round(q25,6),
+        "range_high":round(q75,6),
+        "median":round(median,6),
+        "up_rate":round(up,4),
+        "samples":n,
+        "confidence":confidence,
+        "method":"同一銘柄の過去5年から現在と似た値動きの局面を抽出し、その20営業日後を集計"
+    }
+
+def enrich_forecasts(ranked, meta):
+    meta_by={x["code"]:x for x in meta}
+    by={x["code"]:x for x in ranked}
+    codes=[x["code"] for x in ranked if x["code"] in meta_by]
+    batch_size=80
+    for start in range(0,len(codes),batch_size):
+        part=codes[start:start+batch_size]
+        tickers=[meta_by[cd]["ticker"] for cd in part]
+        print(f"forecast {start+1}-{min(start+len(part),len(codes))}/{len(codes)}",flush=True)
+        try:
+            d=yf.download(tickers,period="5y",interval="1d",auto_adjust=True,actions=False,threads=True,group_by="ticker",progress=False,timeout=40)
+        except Exception as e:
+            print("forecast batch error",e,flush=True);continue
+        for cd,t in zip(part,tickers):
+            try:
+                if isinstance(d.columns,pd.MultiIndex):
+                    h=d[t] if t in d.columns.get_level_values(0) else None
+                else:
+                    h=d if len(tickers)==1 else None
+                fc=forecast_20d(h)
+                if fc:by[cd]["forecast20"]=fc
+            except Exception as e:
+                print("forecast error",cd,e,flush=True)
+    return ranked
+
 def main():
     meta=get_jpx_list()
     print("listed",len(meta),flush=True)
     downloaded=download_all(meta)
     universe_count=len(downloaded)
     ranked=rank(downloaded)
+    ranked=enrich_forecasts(ranked,meta)
     top100=ranked[:100]
     out={"generated_at":datetime.now(timezone.utc).isoformat(),"source":"JPX ticker mirror + Yahoo Finance adjusted daily prices via yfinance","universe_count":universe_count,"count":len(top100),"top100":top100,"candidates":ranked}
     (DATA/"latest-ranking.json").write_text(json.dumps(out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
