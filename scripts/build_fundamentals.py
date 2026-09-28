@@ -10,8 +10,6 @@ DATA=ROOT/"data"
 RANKING=DATA/"latest-ranking.json"
 OUT=DATA/"fundamentals.json"
 
-FIELDS=("revenueGrowth","earningsGrowth","returnOnEquity","operatingMargins","trailingPE","forwardPE","marketCap")
-
 def num(v):
     try:
         x=float(v)
@@ -34,8 +32,7 @@ def metric_score(name,v):
         return 78 if v<=15 else 68 if v<=25 else 52 if v<=40 else 35
     return None
 
-def evaluate(info):
-    vals={k:num(info.get(k)) for k in FIELDS}
+def evaluate(vals):
     parts=[]
     for k in ("revenueGrowth","earningsGrowth","returnOnEquity","operatingMargins","trailingPE"):
         s=metric_score(k,vals.get(k))
@@ -57,32 +54,111 @@ def evaluate(info):
         "metrics_available":len(parts)
     }
 
+def row_values(df,names):
+    if df is None or getattr(df,"empty",True):return []
+    idx={str(x).strip().lower():x for x in df.index}
+    key=None
+    for name in names:
+        if name.lower() in idx:
+            key=idx[name.lower()];break
+    if key is None:return []
+    vals=[]
+    try:
+        series=df.loc[key]
+        for v in series.tolist():
+            x=num(v)
+            if x is not None:vals.append(x)
+    except Exception:
+        return []
+    return vals
+
+def safe_growth(vals):
+    if len(vals)<2:return None
+    latest,prev=vals[0],vals[1]
+    if prev==0:return None
+    if latest>0 and prev>0:return latest/prev-1
+    if latest<0 and prev<0:
+        # 赤字縮小/拡大を通常の成長率として扱うと誤解しやすいので除外
+        return None
+    return None
+
+def derive_from_statements(ticker_obj,close):
+    inc=None;bal=None
+    try:inc=ticker_obj.get_income_stmt(freq="yearly")
+    except Exception:
+        try:inc=ticker_obj.financials
+        except Exception:pass
+    try:bal=ticker_obj.get_balance_sheet(freq="yearly")
+    except Exception:
+        try:bal=ticker_obj.balance_sheet
+        except Exception:pass
+
+    revenue=row_values(inc,["Total Revenue","Operating Revenue"])
+    net=row_values(inc,["Net Income","Net Income Common Stockholders"])
+    op=row_values(inc,["Operating Income"])
+    eps=row_values(inc,["Diluted EPS","Basic EPS"])
+    equity=row_values(bal,["Stockholders Equity","Total Stockholder Equity","Common Stock Equity"])
+
+    rev_growth=safe_growth(revenue)
+    earn_growth=safe_growth(net)
+    op_margin=(op[0]/revenue[0]) if op and revenue and revenue[0] else None
+    roe=(net[0]/equity[0]) if net and equity and equity[0]>0 else None
+    pe=(close/eps[0]) if close and eps and eps[0]>0 else None
+
+    return {
+        "revenueGrowth":num(rev_growth),
+        "earningsGrowth":num(earn_growth),
+        "returnOnEquity":num(roe),
+        "operatingMargins":num(op_margin),
+        "trailingPE":num(pe),
+        "forwardPE":None,
+        "marketCap":None,
+        "source_mode":"annual_financial_statements"
+    }
+
 def fetch_one(row):
     ticker=(row.get("ticker") or (str(row["code"])+".T")).strip()
+    close=num(row.get("close"))
     try:
-        info=yf.Ticker(ticker).get_info()
-        out=evaluate(info or {})
+        t=yf.Ticker(ticker)
+        vals={}
+        # 軽いinfo系が取れる環境ではそれを優先。空なら財務諸表へフォールバック。
+        try:
+            info=t.get_info() or {}
+            vals={
+                "revenueGrowth":num(info.get("revenueGrowth")),
+                "earningsGrowth":num(info.get("earningsGrowth")),
+                "returnOnEquity":num(info.get("returnOnEquity")),
+                "operatingMargins":num(info.get("operatingMargins")),
+                "trailingPE":num(info.get("trailingPE")),
+                "forwardPE":num(info.get("forwardPE")),
+                "marketCap":num(info.get("marketCap")),
+                "source_mode":"quote_summary"
+            }
+        except Exception:
+            vals={}
+        if sum(v is not None for k,v in vals.items() if k not in ("source_mode",))<2:
+            vals=derive_from_statements(t,close)
+        out=evaluate(vals)
         out.update({"code":row["code"],"company":row.get("company",""),"ticker":ticker})
         return row["code"],out
     except Exception as e:
         return row["code"],{"code":row["code"],"company":row.get("company",""),"ticker":ticker,"error":str(e),"reference_score":None,"reference_label":"取得失敗","reference_key":"unknown","metrics_available":0}
 
 def main():
-    if not RANKING.exists():
-        raise SystemExit("ranking missing")
+    if not RANKING.exists():raise SystemExit("ranking missing")
     ranking=json.loads(RANKING.read_text(encoding="utf-8"))
     rows=(ranking.get("top100") or [])[:100]
-    # latest-ranking does not always preserve ticker; .T fallback is correct for normal JPX codes.
     stocks={}
-    with ThreadPoolExecutor(max_workers=6) as ex:
+    with ThreadPoolExecutor(max_workers=4) as ex:
         futures=[ex.submit(fetch_one,row) for row in rows]
         done=0
         for fut in as_completed(futures):
             code,result=fut.result()
             stocks[code]=result
             done+=1
-            print(f"fundamentals {done}/{len(rows)} {code}",flush=True)
-            time.sleep(0.03)
+            print(f"fundamentals {done}/{len(rows)} {code} metrics={result.get('metrics_available',0)}",flush=True)
+            time.sleep(0.05)
     ok=sum(1 for x in stocks.values() if x.get("metrics_available",0)>=2)
     payload={
         "generated_at":datetime.now(timezone.utc).isoformat(),
@@ -90,7 +166,7 @@ def main():
         "usable_count":ok,
         "scope":"top100",
         "ranking_impact":"none",
-        "method":"売上成長・利益成長・ROE・営業利益率・PERを参考評価。モメンタム総合順位には反映しない。",
+        "method":"直近年度の財務諸表等から売上成長・利益成長・ROE・営業利益率・PERを参考評価。モメンタム総合順位には反映しない。",
         "stocks":stocks
     }
     OUT.write_text(json.dumps(payload,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
