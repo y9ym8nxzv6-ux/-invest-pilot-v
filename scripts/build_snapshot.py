@@ -173,6 +173,7 @@ def enrich_forecasts(ranked, meta):
     codes=[x["code"] for x in ranked if x["code"] in meta_by]
     batch_size=80
     history_points={}
+    optimizer_points={}
     for start in range(0,len(codes),batch_size):
         part=codes[start:start+batch_size]
         tickers=[meta_by[cd]["ticker"] for cd in part]
@@ -191,17 +192,20 @@ def enrich_forecasts(ranked, meta):
                 fc=forecast_20d(h)
                 if fc:by[cd]["forecast20"]=fc
 
-                hh=h.dropna(subset=["Close"]).tail(560)
-                pts=[]
-                for idx,row in hh.iterrows():
+                full_h=h.dropna(subset=["Close"]).tail(1260)
+                full_pts=[]
+                for idx,row in full_h.iterrows():
                     try:
                         dt=pd.Timestamp(idx)
                         di=dt.year*10000+dt.month*100+dt.day
                         cl=float(row["Close"])
                         if math.isfinite(cl) and cl>0:
-                            pts.append((di,round(cl,4)))
+                            full_pts.append((di,round(cl,4)))
                     except Exception:
                         pass
+                if len(full_pts)>=500:
+                    optimizer_points[cd]=full_pts
+                pts=full_pts[-560:]
                 if len(pts)>=260:
                     history_points[cd]=pts
             except Exception as e:
@@ -228,6 +232,28 @@ def enrich_forecasts(ranked, meta):
     }
     (DATA/"backtest-history.json").write_text(json.dumps(hist_out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     print("history generated",len(stocks),"stocks x",len(dates),"dates",flush=True)
+
+    opt_dates=sorted({dt for pts in optimizer_points.values() for dt,_ in pts})
+    opt_index={d:i for i,d in enumerate(opt_dates)}
+    opt_stocks={}
+    for cd,pts in optimizer_points.items():
+        x=by.get(cd,{})
+        closes=[None]*len(opt_dates)
+        for dt,cl in pts:
+            closes[opt_index[dt]]=cl
+        opt_stocks[cd]={
+            "company":x.get("company",cd),
+            "market":x.get("market",""),
+            "sector33":x.get("sector33",""),
+            "closes":closes
+        }
+    opt_out={
+        "generated_at":datetime.now(timezone.utc).isoformat(),
+        "dates":opt_dates,
+        "stocks":opt_stocks
+    }
+    Path("/tmp/invest-pilot-optimizer-history.json").write_text(json.dumps(opt_out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
+    print("optimizer history generated",len(opt_stocks),"stocks x",len(opt_dates),"dates",flush=True)
     return ranked
 
 def main():
