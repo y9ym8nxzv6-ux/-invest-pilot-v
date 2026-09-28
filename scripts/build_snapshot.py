@@ -19,9 +19,9 @@ def get_jpx_list():
     req=urllib.request.Request(JPX_PAGE,headers={"User-Agent":"Mozilla/5.0 InvestPilotV7"})
     with urllib.request.urlopen(req,timeout=40) as r:
         page=r.read().decode("utf-8","ignore")
-    matches=re.findall(r'href=["\\']([^"\\']*data[^"\\']*\\.xls[x]?[^"\\']*)["\\']',page,re.I)
+    matches=re.findall(r"href=['\\\"]([^'\\\"]*data[^'\\\"]*\\.xlsx?[^'\\\"]*)['\\\"]",page,re.I)
     if not matches:
-        matches=re.findall(r'href=["\\']([^"\\']*\\.xls[x]?[^"\\']*)["\\']',page,re.I)
+        matches=re.findall(r"href=['\\\"]([^'\\\"]*\\.xlsx?[^'\\\"]*)['\\\"]",page,re.I)
     if not matches:
         raise RuntimeError("JPX listed-issues Excel link not found")
     excel_url=urllib.parse.urljoin("https://www.jpx.co.jp",matches[0])
