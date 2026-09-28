@@ -4,8 +4,12 @@ const NEG={'下方修正':-5,'赤字転落':-5,'赤字':-4,'減益':-3,'減収':
 
 const decode=s=>String(s||'')
   .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'")
-  .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(d+);/g,(_,n)=>String.fromCharCode(+n));
-const strip=s=>decode(String(s||'').replace(/<script[sS]*?</script>/gi,' ').replace(/<style[sS]*?</style>/gi,' ').replace(/<[^>]+>/g,' ')).replace(/s+/g,' ').trim();
+  .replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&#(\d+);/g,(_,n)=>String.fromCharCode(+n));
+const strip=s=>decode(String(s||'')
+  .replace(/<script[\s\S]*?<\/script>/gi,' ')
+  .replace(/<style[\s\S]*?<\/style>/gi,' ')
+  .replace(/<[^>]+>/g,' ')
+).replace(/\s+/g,' ').trim();
 
 const relayUrls=url=>[
   url,
@@ -38,21 +42,21 @@ function classify(text){
   return{score,positive:[...new Set(pos)],negative:[...new Set(neg)],evaluation};
 }
 function parseRss(xml){
-  const out=[];const re=/<item>([sS]*?)</item>/gi;let m;
+  const out=[];const re=/<item>([\s\S]*?)<\/item>/gi;let m;
   while((m=re.exec(xml))&&out.length<10){
-    const b=m[1],tm=b.match(/<title>([sS]*?)</title>/i),lm=b.match(/<link>([sS]*?)</link>/i),pm=b.match(/<pubDate>([sS]*?)</pubDate>/i);
+    const b=m[1],tm=b.match(/<title>([\s\S]*?)<\/title>/i),lm=b.match(/<link>([\s\S]*?)<\/link>/i),pm=b.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
     const title=strip(tm?tm[1]:'');
     if(title)out.push({title,url:strip(lm?lm[1]:''),published:strip(pm?pm[1]:'')});
   }
   return out;
 }
 function parseDuck(html){
-  const out=[];const re=/<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([sS]*?)</a>/gi;let m;
+  const out=[];const re=/<a[^>]+class=["'][^"']*result__a[^"']*["'][^>]+href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;let m;
   while((m=re.exec(html))&&out.length<8)out.push({url:decode(m[1]),title:strip(m[2]),published:''});
   return out;
 }
 async function liveSearch(code,company){
-  const terms=`${code} ${company||''} 株 決算 上方修正 下方修正 増配 自社株買い`;
+  const terms=\`\${code} \${company||''} 株 決算 上方修正 下方修正 増配 自社株買い\`;
   const rss='https://news.google.com/rss/search?q='+encodeURIComponent(terms)+'&hl=ja&gl=JP&ceid=JP:ja';
   let results=[];
   try{results=parseRss(await fetchAny(rss,10000))}catch{}
