@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+# manual-refresh-hook
 ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
 RANKING=DATA/"latest-ranking.json"
