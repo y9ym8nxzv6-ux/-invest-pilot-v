@@ -21,9 +21,22 @@ POS={"上方修正":4,"最高益":4,"過去最高":4,"増益":2,"増収":2,"増�
 NEG={"下方修正":-5,"赤字転落":-5,"赤字":-4,"減益":-3,"減収":-2,"不正":-5,"行政処分":-5,"希薄化":-3,"公募増資":-4,"債務超過":-6,"継続企業":-5,"不祥事":-5,"下振れ":-3}
 
 def get(url, timeout=45):
-    req=urllib.request.Request(url,headers={"User-Agent":UA,"Accept":"*/*"})
-    with urllib.request.urlopen(req,timeout=timeout) as r:
-        return r.read()
+    candidates=[
+        url,
+        "https://corsproxy.io/?url="+urllib.parse.quote(url,safe=""),
+        "https://api.allorigins.win/raw?url="+urllib.parse.quote(url,safe="")
+    ]
+    last=None
+    for u in candidates:
+        try:
+            req=urllib.request.Request(u,headers={"User-Agent":UA,"Accept":"*/*"})
+            with urllib.request.urlopen(req,timeout=timeout) as r:
+                data=r.read()
+                if len(data)<20: raise RuntimeError("empty response")
+                return data
+        except Exception as e:
+            last=e
+    raise last or RuntimeError("download failed")
 
 class LinkParser(HTMLParser):
     def __init__(self):
