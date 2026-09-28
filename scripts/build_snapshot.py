@@ -109,7 +109,7 @@ def rank(raw):
         x["timing"]=timing(x)
     raw.sort(key=lambda x:x["technical_score"],reverse=True)
     for i,x in enumerate(raw,1):x["rank"]=i
-    return raw[:500]
+    return raw
 
 
 def _feature_at(close, i):
@@ -235,11 +235,37 @@ def main():
     print("listed",len(meta),flush=True)
     downloaded=download_all(meta)
     universe_count=len(downloaded)
-    ranked=rank(downloaded)
-    ranked=enrich_forecasts(ranked,meta)
-    top100=ranked[:100]
-    out={"generated_at":datetime.now(timezone.utc).isoformat(),"source":"JPX ticker mirror + Yahoo Finance adjusted daily prices via yfinance","universe_count":universe_count,"count":len(top100),"top100":top100,"candidates":ranked}
+    all_ranked=rank(downloaded)
+    candidates=all_ranked[:500]
+    candidates=enrich_forecasts(candidates,meta)
+    top100=candidates[:100]
+
+    now=datetime.now(timezone.utc).isoformat()
+    out={
+        "generated_at":now,
+        "source":"JPX ticker mirror + Yahoo Finance adjusted daily prices via yfinance",
+        "universe_count":universe_count,
+        "count":len(top100),
+        "top100":top100,
+        "candidates":candidates
+    }
     (DATA/"latest-ranking.json").write_text(json.dumps(out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
-    print("generated",len(top100),"display rows from",len(ranked),"candidates /",universe_count,"downloaded",flush=True)
+
+    compact=[]
+    keep=("code","company","market","sector33","close","ret5","ret20","ret60","ret120","ret250","trend_count","avg_value","is_semiconductor","technical_score","rank")
+    for x in all_ranked:
+        row={k:x.get(k) for k in keep}
+        if x.get("forecast20") is not None:
+            row["forecast20"]=x.get("forecast20")
+        compact.append(row)
+    analysis={
+        "generated_at":now,
+        "universe_count":universe_count,
+        "method":"20/60/120/250日騰落・移動平均トレンド・売買代金を共通式で相対採点",
+        "stocks":compact
+    }
+    (DATA/"all-analysis.json").write_text(json.dumps(analysis,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
+
+    print("generated",len(top100),"top100 /",len(candidates),"forecast candidates /",len(all_ranked),"ranked",flush=True)
 
 if __name__=="__main__":main()
