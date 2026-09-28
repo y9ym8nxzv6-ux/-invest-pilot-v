@@ -2,6 +2,11 @@ name: Build market snapshot
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build_snapshot.py"
+      - ".github/workflows/market-data.yml"
   schedule:
     - cron: "17 */3 * * 1-5"
 
