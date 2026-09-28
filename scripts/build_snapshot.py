@@ -109,14 +109,17 @@ def rank(raw):
         x["timing"]=timing(x)
     raw.sort(key=lambda x:x["technical_score"],reverse=True)
     for i,x in enumerate(raw,1):x["rank"]=i
-    return raw[:100]
+    return raw[:500]
 
 def main():
     meta=get_jpx_list()
     print("listed",len(meta),flush=True)
-    ranked=rank(download_all(meta))
-    out={"generated_at":datetime.now(timezone.utc).isoformat(),"source":"JPX listed issues + Yahoo Finance adjusted daily prices via yfinance","count":len(ranked),"top100":ranked}
+    downloaded=download_all(meta)
+    universe_count=len(downloaded)
+    ranked=rank(downloaded)
+    top100=ranked[:100]
+    out={"generated_at":datetime.now(timezone.utc).isoformat(),"source":"JPX ticker mirror + Yahoo Finance adjusted daily prices via yfinance","universe_count":universe_count,"count":len(top100),"top100":top100,"candidates":ranked}
     (DATA/"latest-ranking.json").write_text(json.dumps(out,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
-    print("generated",len(ranked),flush=True)
+    print("generated",len(top100),"display rows from",len(ranked),"candidates /",universe_count,"downloaded",flush=True)
 
 if __name__=="__main__":main()
