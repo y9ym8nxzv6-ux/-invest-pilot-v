@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -9,6 +9,114 @@ if(typeof document!=='undefined'){
   const yen=n=>Number.isFinite(+n)?Math.round(+n).toLocaleString('ja-JP')+'円':'--'; const pct=n=>Number.isFinite(+n)?((+n)*100).toFixed(1)+'%':'--'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const researchJobs=new Map();
   let researchWorker=null;
+  const normSearch=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').trim();
+  async function loadStockMaster(){
+    if(state.stockMaster)return state.stockMaster;
+    if(state.stockMasterPromise)return state.stockMasterPromise;
+    state.stockMasterPromise=(async()=>{
+      const r=await fetch('./data/stock-master.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('銘柄マスター未生成');
+      const d=await r.json();
+      state.stockMaster=Array.isArray(d.stocks)?d.stocks:[];
+      if(!state.stockMaster.length)throw new Error('銘柄マスターが空です');
+      return state.stockMaster;
+    })();
+    try{return await state.stockMasterPromise}finally{state.stockMasterPromise=null}
+  }
+  function searchStocks(query,limit=10){
+    const q=normSearch(query);
+    if(!q)return [];
+    const src=state.stockMaster||[];
+    return src.map(s=>{
+      const code=normSearch(s.code),name=normSearch(s.company);
+      let score=99;
+      if(code===q)score=0;
+      else if(name===q)score=1;
+      else if(code.startsWith(q))score=2;
+      else if(name.startsWith(q))score=3;
+      else if(name.includes(q))score=4;
+      else if(code.includes(q))score=5;
+      return {s,score};
+    }).filter(x=>x.score<99).sort((a,b)=>a.score-b.score||String(a.s.code).localeCompare(String(b.s.code))).slice(0,limit).map(x=>x.s);
+  }
+  function isTop100(code){
+    const x=state.ranked.find(y=>String(y.code)===String(code));
+    return !!(x&&Number(x.rank)<=100);
+  }
+  function getFavorites(){
+    try{const x=JSON.parse(localStorage.getItem('ip7_favorites')||'[]');return Array.isArray(x)?x:[]}catch{return []}
+  }
+  function saveFavorites(items){localStorage.setItem('ip7_favorites',JSON.stringify(items.slice(0,100)))}
+  function isFavorite(code){return getFavorites().some(x=>String(x.code)===String(code))}
+  function toggleFavorite(){
+    const s=state.selectedStock;if(!s)return;
+    let fav=getFavorites();
+    const i=fav.findIndex(x=>String(x.code)===String(s.code));
+    if(i>=0)fav.splice(i,1);
+    else fav.unshift({code:s.code,company:s.company||'',market:s.market||'',sector33:s.sector33||''});
+    saveFavorites(fav);renderFavorites();updateFavoriteButton();
+  }
+  function updateFavoriteButton(){
+    const b=$('favoriteBtn'),s=state.selectedStock;if(!b)return;
+    if(!s||isTop100(s.code)){b.style.display='none';return}
+    b.style.display='block';
+    b.textContent=isFavorite(s.code)?'★ お気に入り登録済み（解除）':'☆ お気に入りに保存';
+  }
+  function renderFavorites(){
+    const fav=getFavorites();$('favoriteCount').textContent=fav.length;
+    $('favoriteList').innerHTML=fav.length?fav.map(s=>`<div class="favorite-item">
+      <div class="favorite-open" data-fav-open="${esc(s.code)}"><div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')}</div></div>
+      <button class="favorite-remove" data-fav-remove="${esc(s.code)}" aria-label="削除">×</button>
+    </div>`).join(''):'<div class="small">まだ登録されていません。</div>';
+    document.querySelectorAll('[data-fav-open]').forEach(el=>el.onclick=()=>openStockByCode(el.dataset.favOpen));
+    document.querySelectorAll('[data-fav-remove]').forEach(el=>el.onclick=e=>{e.stopPropagation();saveFavorites(getFavorites().filter(x=>String(x.code)!==String(el.dataset.favRemove)));renderFavorites();updateFavoriteButton()});
+  }
+  function renderSearchSuggestions(list){
+    const box=$('searchSuggestions');
+    if(!list.length){box.classList.remove('show');box.innerHTML='';return}
+    box.innerHTML=list.map(s=>`<div class="search-hit" data-stock-code="${esc(s.code)}"><div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')}</div></div>`).join('');
+    box.classList.add('show');
+    box.querySelectorAll('[data-stock-code]').forEach(el=>el.onclick=()=>openStockByCode(el.dataset.stockCode));
+  }
+  async function openStockByCode(code){
+    let s=(state.stockMaster||[]).find(x=>String(x.code)===String(code));
+    if(!s){
+      const ranked=state.ranked.find(x=>String(x.code)===String(code));
+      if(ranked)s={code:ranked.code,company:ranked.company,market:ranked.market||'',sector33:ranked.sector33||''};
+    }
+    if(!s){
+      try{await loadStockMaster();s=state.stockMaster.find(x=>String(x.code)===String(code))}catch{}
+    }
+    if(!s)return;
+    selectStock(s,true);
+  }
+  function selectStock(s,doResearch=true){
+    state.selectedStock=s;
+    $('researchCode').value=s.code||'';
+    $('researchCompany').value=s.company||'';
+    $('researchQuery').value=(s.code||'')+' '+(s.company||'');
+    $('searchSuggestions').classList.remove('show');
+    const ranked=state.ranked.find(x=>String(x.code)===String(s.code));
+    const rank=ranked&&Number(ranked.rank)<=100?`TOP100 #${ranked.rank}`:'TOP100外';
+    $('selectedStockInfo').classList.add('show');
+    $('selectedStockInfo').innerHTML=`<div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')} · ${rank}</div>`;
+    updateFavoriteButton();
+    if(doResearch)runResearch();
+  }
+  async function resolveSearch(){
+    const q=$('researchQuery').value.trim();
+    if(!q){$('researchSummary').textContent='証券コードか会社名を入力してください。';return}
+    try{
+      await loadStockMaster();
+      const list=searchStocks(q,10);
+      if(!list.length){$('researchSummary').textContent='該当する銘柄が見つかりません。';renderSearchSuggestions([]);return}
+      const nq=normSearch(q);
+      const exact=list.find(s=>normSearch(s.code)===nq||normSearch(s.company)===nq);
+      selectStock(exact||list[0],true);
+    }catch(e){
+      $('researchSummary').textContent='銘柄一覧を読み込めませんでした。少し待って再読み込みしてください。';
+    }
+  }
   function materialEvaluation(score){
     score=Number(score)||0;
     if(score>=8)return {label:'🟢 強いプラス材料',cls:'good'};
@@ -164,6 +272,7 @@ if(typeof document!=='undefined'){
   }
   function prefetchCloudAssets(){
     setTimeout(()=>{
+      loadStockMaster().catch(()=>{});
       loadCloudResearch().catch(()=>{});
       loadCloudHistory().catch(()=>{});
     },250);
@@ -238,7 +347,7 @@ if(typeof document!=='undefined'){
     saveBasicSettings();
   }
   function saveBasicSettings(){localStorage.setItem('ip7_capital',$('capital').value);localStorage.setItem('ip7_risk',$('risk').value);localStorage.setItem('ip7_semi',$('semiMode').value);localStorage.setItem('ip7_lot',$('lotMode').value)}
-  function pickResearch(code){const x=state.ranked.find(y=>y.code===code);$('researchCode').value=code;$('researchCompany').value=x?.company||'';switchPane('research');setTimeout(()=>runResearch(),0)}
+  function pickResearch(code){const x=state.ranked.find(y=>y.code===code);switchPane('research');if(x)selectStock({code:x.code,company:x.company,market:x.market||'',sector33:x.sector33||''},true);else openStockByCode(code)}
   function switchPane(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.pane===id));document.querySelectorAll('.pane').forEach(x=>x.classList.toggle('active',x.id===id));}
   async function ensureHistory(){if(state.priceMap&&state.months>=24)return;await loadCloudHistory()}
   async function runBT(modeOverride=null){const b=$('btRun');b.disabled=true;startWait('過去成績を計算中',8);$('btMsg').textContent='過去データで計算中…';try{await ensureHistory(13);const opts={mode:modeOverride||$('btSemi').value,capital:+$('btCapital').value||100000,risk:$('risk').value,lot:+$('btLot').value||1,topN:+$('btTop').value||10,rebalanceDays:+$('btDays').value||20,costBps:+$('btCost').value||10,reserve:.10,theme:settings.theme};const d=IPCore.runBacktest(state.priceMap,opts);renderBT(d);$('btMsg').textContent=`${d.start_date}〜${d.end_date} / ${d.periods}期間 / 買えず見送り ${d.skipped_unaffordable}回`;}catch(e){$('btMsg').textContent='検証エラー：'+e.message}finally{b.disabled=false;stopWait()}}
@@ -247,7 +356,7 @@ if(typeof document!=='undefined'){
   async function compareSemi(){switchPane('backtest');startWait('半導体あり／なしを比較中',10);$('btMsg').textContent='半導体を含む場合と、除いた場合の過去成績を比較しています…';try{await ensureHistory(13);const base={capital:+$('capital').value||100000,risk:$('risk').value,lot:+$('lotMode').value||1,topN:10,rebalanceDays:20,costBps:10,reserve:.10,theme:settings.theme};const a=IPCore.runBacktest(state.priceMap,{...base,mode:'all'}),b=IPCore.runBacktest(state.priceMap,{...base,mode:'exclude'});renderBT(a);$('btCompareTable').innerHTML=`<table style="min-width:560px"><thead><tr><th>条件</th><th>最終資金</th><th>累積</th><th>最大DD</th><th>期間</th></tr></thead><tbody><tr><td>半導体を含む</td><td>${yen(a.ending_capital)}</td><td>${pct(a.total_return)}</td><td>${pct(a.max_drawdown)}</td><td>${a.periods}</td></tr><tr><td>半導体を除く</td><td>${yen(b.ending_capital)}</td><td>${pct(b.total_return)}</td><td>${pct(b.max_drawdown)}</td><td>${b.periods}</td></tr></tbody></table>`;$('btMsg').textContent='比較完了。これは過去データでの比較です。'}catch(e){$('btMsg').textContent='比較エラー：'+e.message}finally{stopWait()}}
   async function runResearch(){
     const code=$('researchCode').value.trim(),company=$('researchCompany').value.trim();
-    if(!code){$('researchSummary').textContent='銘柄コードを入力してください';return}
+    if(!code){$('researchSummary').textContent='証券コードか会社名で銘柄を検索してください。';return}
     $('liveResearchBtn').style.display='none';
     $('researchSummary').textContent='事前取得したニュース・決算を確認中…';
     try{
@@ -283,14 +392,14 @@ if(typeof document!=='undefined'){
       $('liveResearchBtn').style.display='block';
     }
   }
-  function manualSearch(){const q=encodeURIComponent(`${$('researchCode').value} ${$('researchCompany').value} 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
+  function manualSearch(){const raw=$('researchCode').value?`${$('researchCode').value} ${$('researchCompany').value}`:$('researchQuery').value;const q=encodeURIComponent(`${raw} 株 決算 最新ニュース 上方修正 下方修正`);window.open('https://www.google.com/search?q='+q,'_blank','noopener')}
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function init(){
     $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
-    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=runResearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;
+    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
