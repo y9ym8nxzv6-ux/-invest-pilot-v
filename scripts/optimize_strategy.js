@@ -142,7 +142,8 @@ if(!Number.isFinite(previousDays)&&confidence(best)==='低め'){
 const previousEval=evaluations.find(x=>x.days===previousDays);
 const changeThreshold=3.0;
 // 微差では設定を変えない。日々のノイズで推奨が往復するのを防ぐ。
-if(previousEval&&best.days!==previousDays&&best.robust_score-previousEval.robust_score<changeThreshold){
+const previousWeak=previous?.confidence==='低め'||(previousEval&&((previousEval.sample_penalty||0)>0||(previousEval.min_periods_per_window||0)<6));
+if(previousEval&&!previousWeak&&best.days!==previousDays&&best.robust_score-previousEval.robust_score<changeThreshold){
   selected=previousEval;
 }
 
