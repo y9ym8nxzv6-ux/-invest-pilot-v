@@ -44,7 +44,7 @@ function toMap(hist,startIdx=0,endIdx=null){
 function windows(hist){
   const n=(hist.dates||[]).length;
   if(n>=1100){
-    const len=550;
+    const len=Math.min(850,n);
     return [
       {name:'前半',start:0,end:len},
       {name:'中盤',start:Math.floor((n-len)/2),end:Math.floor((n-len)/2)+len},
@@ -92,13 +92,17 @@ function evaluate(hist,rebalanceDays){
   const anns=ok.map(x=>x.annual_return),excess=ok.map(x=>x.excess_return),dds=ok.map(x=>x.max_drawdown);
   const med=median(anns),medEx=median(excess),worst=Math.min(...anns),worstDD=Math.min(...dds),sd=stdev(anns);
   const positive=anns.filter(x=>x>0).length;
+  const minPeriods=Math.min(...ok.map(x=>x.periods));
   // 高リターン一本勝負ではなく、複数期間の安定性と最大下落を重視。
+  // 売買サイクルが少ない設定は偶然の影響が大きいので強く減点する。
+  const samplePenalty=minPeriods>=6?0:(6-minPeriods)*12;
   const robust=
     60*Math.tanh(med/0.30)+
     20*Math.tanh(medEx/0.20)+
     10*Math.tanh(worst/0.25)-
     25*Math.min(1,Math.abs(worstDD))-
-    10*Math.min(1,sd);
+    10*Math.min(1,sd)-
+    samplePenalty;
 
   return {
     days:rebalanceDays,
@@ -110,24 +114,31 @@ function evaluate(hist,rebalanceDays){
     return_dispersion:Number(sd.toFixed(6)),
     positive_windows:positive,
     window_count:ok.length,
+    min_periods_per_window:minPeriods,
+    sample_penalty:samplePenalty,
+    eligible:minPeriods>=5,
     windows:rows
   };
 }
 function confidence(x){
-  if(x.window_count>=3&&x.positive_windows===x.window_count&&x.return_dispersion<=0.25&&x.worst_max_drawdown>=-0.30)return '高め';
-  if(x.positive_windows>=Math.max(2,x.window_count-1)&&x.return_dispersion<=0.45)return '標準';
+  if((x.min_periods_per_window||0)>=8&&x.window_count>=3&&x.positive_windows===x.window_count&&x.return_dispersion<=0.25&&x.worst_max_drawdown>=-0.30)return '高め';
+  if((x.min_periods_per_window||0)>=5&&x.positive_windows>=Math.max(2,x.window_count-1)&&x.return_dispersion<=0.45)return '標準';
   return '低め';
 }
 
 const input=fs.existsSync(TEMP)?TEMP:FALLBACK;
 const hist=JSON.parse(fs.readFileSync(input,'utf8'));
 const evaluations=DAYS.map(d=>evaluate(hist,d)).sort((a,b)=>b.robust_score-a.robust_score);
-const best=evaluations[0];
+const eligible=evaluations.filter(x=>x.eligible);
+const best=eligible[0]||evaluations.find(x=>x.days===20)||evaluations[0];
 let previous=null;
 try{previous=JSON.parse(fs.readFileSync(OUT,'utf8'))}catch{}
 
 let selected=best;
 const previousDays=Number(previous?.recommended_days);
+if(!Number.isFinite(previousDays)&&confidence(best)==='低め'){
+  selected=evaluations.find(x=>x.days===20)||best;
+}
 const previousEval=evaluations.find(x=>x.days===previousDays);
 const changeThreshold=3.0;
 // 微差では設定を変えない。日々のノイズで推奨が往復するのを防ぐ。
@@ -155,7 +166,7 @@ const payload={
   changed:Boolean(changed),
   confidence:confidence(selected),
   change_threshold:changeThreshold,
-  method:'過去5年のデータを複数期間に分け、10/20/40/60/100営業日をコスト込みで比較。利益・対ベンチマーク・最大下落・期間ごとのばらつきを総合評価し、微差では設定を変更しない。',
+  method:'過去5年のデータを複数期間に分け、10/20/40/60/100営業日をコスト込みで比較。利益・対ベンチマーク・最大下落・期間ごとのばらつき・検証回数を総合評価し、検証回数不足や微差では設定を変更しない。',
   note:'過去データに基づく自動最適化であり、将来の成績を保証するものではありません。',
   evaluations:evaluations.sort((a,b)=>a.days-b.days),
   change_history:history
