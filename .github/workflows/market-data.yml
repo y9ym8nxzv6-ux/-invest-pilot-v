@@ -32,6 +32,6 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add data/latest-ranking.json
           git diff --cached --quiet && exit 0
-          git commit -m "Refresh market ranking [skip ci]"
+          git commit -m "Refresh market ranking"
           git pull --rebase origin main
           git push
