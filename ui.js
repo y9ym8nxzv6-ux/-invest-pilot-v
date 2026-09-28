@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -23,6 +23,71 @@ if(typeof document!=='undefined'){
     })();
     try{return await state.stockMasterPromise}finally{state.stockMasterPromise=null}
   }
+  async function loadAllAnalysis(){
+    if(state.allAnalysis)return state.allAnalysis;
+    if(state.allAnalysisPromise)return state.allAnalysisPromise;
+    state.allAnalysisPromise=(async()=>{
+      const r=await fetch('./data/all-analysis.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('全銘柄分析データ未生成');
+      const d=await r.json();
+      state.analysisUniverseCount=Number(d.universe_count)||0;
+      const map=new Map();
+      for(const x of (d.stocks||[]))map.set(String(x.code),x);
+      if(!map.size)throw new Error('全銘柄分析データが空です');
+      state.allAnalysis=map;
+      return map;
+    })();
+    try{return await state.allAnalysisPromise}finally{state.allAnalysisPromise=null}
+  }
+  function signalClass(key){
+    return key==='strongbuy'?'strongbuy':key==='buy'?'buy':key==='strongsell'?'strongsell':key==='avoid'?'avoid':key==='wait'?'wait':'watch';
+  }
+  function renderAnalysisCard(a){
+    const box=$('stockAnalysisCard');
+    if(!a){box.classList.remove('show');box.innerHTML='';return}
+    const sig=(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(a):{key:'watch',label:'🔵 監視',reason:'条件確認中'};
+    const cls=signalClass(sig.key);
+    const total=state.analysisUniverseCount||'全解析銘柄';
+    const fc=a.forecast20;
+    const outlook=fc
+      ? `<div class="analysis-cell"><div class="k">20営業日後の参考</div><div class="v">${pct(fc.range_low)}〜${pct(fc.range_high)}</div></div><div class="analysis-cell"><div class="k">類似局面の上昇割合</div><div class="v">${Math.round((Number(fc.up_rate)||0)*100)}%</div></div>`
+      : `<div class="analysis-cell"><div class="k">20営業日後の参考</div><div class="v">データ不足</div></div><div class="analysis-cell"><div class="k">現在値</div><div class="v">${yen(a.close)}</div></div>`;
+    box.classList.add('show');
+    box.innerHTML=`
+      <div class="analysis-head">
+        <div>
+          <div class="analysis-rank">国内株 総合順位</div>
+          <div class="analysis-score">#${esc(a.rank)} <span style="font-size:13px;color:var(--muted)">/ ${esc(total)}</span></div>
+        </div>
+        <div class="signal-pill ${cls}">${sig.label}</div>
+      </div>
+      <div class="analysis-judge">総合点 ${Number(a.technical_score).toFixed(1)} / 100</div>
+      <div class="analysis-reason"><b>この評価の理由：</b> ${esc(sig.reason)}</div>
+      <div class="analysis-grid">
+        <div class="analysis-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
+        <div class="analysis-cell"><div class="k">過去60日</div><div class="v ${a.ret60>=0?'good':'bad'}">${pct(a.ret60)}</div></div>
+        <div class="analysis-cell"><div class="k">過去120日</div><div class="v ${a.ret120>=0?'good':'bad'}">${pct(a.ret120)}</div></div>
+        <div class="analysis-cell"><div class="k">過去250日</div><div class="v ${a.ret250>=0?'good':'bad'}">${pct(a.ret250)}</div></div>
+        ${outlook}
+      </div>
+      <div class="explain-box"><b>総合点とは？</b><br>過去の値動き、上昇トレンド、売買代金を国内株で比較した相対評価です。100点に近いほど現在の条件が強いことを示しますが、将来の上昇率を保証する点数ではありません。</div>`;
+  }
+  async function showSelectedAnalysis(code){
+    const fallback=state.ranked.find(x=>String(x.code)===String(code));
+    if(fallback)renderAnalysisCard(fallback);
+    else{
+      $('stockAnalysisCard').classList.add('show');
+      $('stockAnalysisCard').innerHTML='<div class="small">株価データの分析結果を読み込み中…</div>';
+    }
+    try{
+      const map=await loadAllAnalysis();
+      const a=map.get(String(code));
+      if(a)renderAnalysisCard(a);
+      else $('stockAnalysisCard').innerHTML='<div class="small">この銘柄は履歴不足のため、現在は総合分析の対象外です。</div>';
+    }catch(e){
+      if(!fallback)$('stockAnalysisCard').innerHTML='<div class="small">全銘柄分析を更新中です。少し待って再度開いてください。</div>';
+    }
+  }
   function searchStocks(query,limit=10){
     const q=normSearch(query);
     if(!q)return [];
@@ -40,6 +105,8 @@ if(typeof document!=='undefined'){
     }).filter(x=>x.score<99).sort((a,b)=>a.score-b.score||String(a.s.code).localeCompare(String(b.s.code))).slice(0,limit).map(x=>x.s);
   }
   function isTop100(code){
+    const a=state.allAnalysis?.get(String(code));
+    if(a)return Number(a.rank)<=100;
     const x=state.ranked.find(y=>String(y.code)===String(code));
     return !!(x&&Number(x.rank)<=100);
   }
@@ -96,10 +163,9 @@ if(typeof document!=='undefined'){
     $('researchCompany').value=s.company||'';
     $('researchQuery').value=(s.code||'')+' '+(s.company||'');
     $('searchSuggestions').classList.remove('show');
-    const ranked=state.ranked.find(x=>String(x.code)===String(s.code));
-    const rank=ranked&&Number(ranked.rank)<=100?`TOP100 #${ranked.rank}`:'TOP100外';
     $('selectedStockInfo').classList.add('show');
-    $('selectedStockInfo').innerHTML=`<div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')} · ${rank}</div>`;
+    $('selectedStockInfo').innerHTML=`<div class="nm">${esc(s.company||s.code)}</div><div class="sub">証券コード ${esc(s.code)} · ${esc(s.sector33||s.market||'')}</div>`;
+    showSelectedAnalysis(s.code);
     updateFavoriteButton();
     if(doResearch)runResearch();
   }
@@ -273,6 +339,7 @@ if(typeof document!=='undefined'){
   function prefetchCloudAssets(){
     setTimeout(()=>{
       loadStockMaster().catch(()=>{});
+      loadAllAnalysis().catch(()=>{});
       loadCloudResearch().catch(()=>{});
       loadCloudHistory().catch(()=>{});
     },250);
