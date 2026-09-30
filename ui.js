@@ -658,6 +658,49 @@ if(typeof document!=='undefined'){
       '<div class="forecast-up">類似例の上昇割合 '+(hasNumber(f.up_rate)?Math.round(Number(f.up_rate)*100)+'%':'—')+'</div></div>'+
       '<div class="forecast-meta">中央値 '+pct(f.median)+' · 類似 '+esc(f.samples)+'例 · 参考度目安 '+esc(f.confidence||'—')+'</div></div>';
   }
+  function renderFiveStockBasket(){
+    const status=$('basketStatus'),summary=$('basketSummary'),list=$('basketList');
+    if(!status||!summary||!list)return;
+    const money=Number($('capital')?.value)||200000;
+    const note='<div class="basket-note">実際の発注価格と株数は証券会社で確認してください。配当・税金・手数料・約定価格の変動は計算に含みません。</div>';
+    if(state.snapshot?.key!=='cloud'||!Array.isArray(state.ranked)||state.ranked.length<100){
+      status.innerHTML='<strong>ランキングデータを読み込み中</strong><p>国内株の最新の総合順位が届くと、5銘柄の資金配分を試算します。</p>';
+      list.innerHTML='';return;
+    }
+    if(!state.dailyQuotes){
+      status.innerHTML='<strong>終値データを確認中</strong><p>購入株数の試算は直近終値を使います。株価が読み込めていない間は、株数を出しません。</p>';
+      list.innerHTML='';return;
+    }
+    const mode=$('semiMode').value;
+    const risk=$('risk').value;
+    const lot=Number($('lotMode').value)||1;
+    const priced=state.ranked.filter(x=>IPCore.modeOK(x,mode)).map(x=>{
+      const q=quoteOf(x.code);
+      const ago=q?.price_date?Date.now()-Date.parse(q.price_date+'T00:00:00+09:00'):Infinity;
+      if(!q||!Number.isFinite(ago)||ago>7*86400000)return {...x,eligible:false,close:NaN};
+      const sig=IPSignals.classify(x);
+      return {...x,close:Number(q.close),signal:sig.label,
+        eligible:sig.key==='strongbuy'||sig.key==='buy'};
+    });
+    const p=IPCore.buildFiveStockPlan(priced,{capital:money,risk,lot,maxPositions:5,reserve:.10,scoreGap:10});
+    status.innerHTML='<strong>'+esc(p.status)+'</strong><p>'+esc(p.reason)+
+      ' 業種・テーマは'+p.unique_themes+'分類。買い判定が出ても、現時点での買付を指示するものではありません。</p>';
+    const summaryCell=(k,v)=>'<div class="basket-metric"><div class="k">'+k+'</div><div class="v">'+v+'</div></div>';
+    summary.innerHTML=summaryCell('試算対象',p.count+' / 5銘柄')+
+      summaryCell('概算購入額',yen(p.committed))+
+      summaryCell('残しておく現金',yen(p.remaining))+
+      summaryCell('1銘柄の上限',yen(p.slot))+
+      summaryCell('業種・テーマ分類',p.unique_themes+'分類')+
+      summaryCell('買い判定の候補',p.qualifying_count+'銘柄');
+    list.innerHTML=p.positions.map((x,i)=>
+      '<div class="basket-item"><div><strong>'+(i+1)+'. '+esc(x.company)+'</strong><div class="basket-sub">'+
+      esc(x.code)+' · 全市場 '+esc(x.rank)+'位 · '+esc(x.theme)+'<br>'+esc(x.signal)+
+      ' · 終値 '+moneyWithDecimals(x.price)+' × '+x.shares+'株</div></div>'+
+      '<div class="basket-cost">'+yen(x.estimated_total)+'<div class="basket-sub">'+
+      ((x.estimated_total/(p.capital||1))*100).toFixed(1)+'% 配分</div></div></div>'
+    ).join('')+(p.count<5?'<div class="basket-note">満たせなかった枠は「条件不足」扱いにしており、弱い銘柄で数合わせはしません。</div>':'')+note;
+  }
+
   function currentRows(){
     const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;
     const priced=state.dailyQuotes?state.ranked.map(x=>{const q=quoteOf(x.code);return q?{...x,close:q.close}:x}):state.ranked;
@@ -709,6 +752,7 @@ if(typeof document!=='undefined'){
     }).join(''):'<div class="simple-note">この条件では候補がありません。</div>';
     document.querySelectorAll('.stock-card[data-code]').forEach(el=>el.onclick=()=>pickResearch(el.dataset.code));
     $('moreBtn').style.display=state.visibleCount<filtered.length?'block':'none';
+    renderFiveStockBasket();
     saveBasicSettings();
   }
   function saveBasicSettings(){localStorage.setItem('ip7_capital',$('capital').value);localStorage.setItem('ip7_risk',$('risk').value);localStorage.setItem('ip7_semi',$('semiMode').value);localStorage.setItem('ip7_lot',$('lotMode').value)}
@@ -784,7 +828,7 @@ if(typeof document!=='undefined'){
   async function exportRanking(){const rows=currentRows(),head=['rank','code','company','score','close','ret20','ret60','ret120','ret250','semiconductor','budget_yen','shares'];const csv=[head.join(','),...rows.map(x=>[x.rank,x.code,`"${String(x.company).replaceAll('"','""')}"`,x.technical_score.toFixed(2),x.close,x.ret20,x.ret60,x.ret120,x.ret250,x.is_semiconductor?1:0,x.budget_yen,x.shares_by_budget].join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='invest_pilot_v7_ranking.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
   async function init(){
     state.compareCodes=getCompareCodes();
-    $('capital').value=localStorage.getItem('ip7_capital')||100000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('btDays').value=localStorage.getItem('ip7_bt_days')||'auto';$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
+    $('capital').value=localStorage.getItem('ip7_capital')||200000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('btDays').value=localStorage.getItem('ip7_bt_days')||'auto';$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
