@@ -171,7 +171,10 @@ const IPCore = (() => {
     let expensive=0,duplicateTheme=0;
     const maxThemeHoldings=2;
     function theme(x){
-      return x.is_semiconductor?'半導体関連':(String(x.sector33||x.market||'業種不明').trim()||'業種不明');
+      if(x.is_semiconductor)return '半導体関連';
+      const sector=String(x.sector33||x.market||'業種不明').trim()||'業種不明';
+      if(/銀行|証券|保険|その他金融/.test(sector))return '金融関連';
+      return sector;
     }
     function add(x,allowSecond){
       if(selection.length>=limit)return;
