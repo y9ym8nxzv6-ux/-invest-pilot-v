@@ -49,6 +49,22 @@
 .quote-strip{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;margin:10px 0 2px;padding:8px 10px;border:1px solid #304363;background:#0a182c;border-radius:10px}.quote-change{font-size:14px;font-weight:800}.quote-date,.quote-empty{font-size:10px;color:var(--muted)}.quote-positive{color:var(--good)}.quote-negative{color:var(--bad)}.quote-flat{color:#e5edf9}.quote-feature{margin:11px 0;padding:12px;background:#101f39;border:1px solid #304d7a;border-radius:13px}.quote-feature .quote-change{font-size:21px;display:block;margin-top:4px}.quote-feature .quote-date{display:block;margin-top:4px}
 .daily-detail{margin-top:12px;padding:12px;background:#0b1931;border:1px solid #355078;border-radius:14px}.daily-detail summary{font-size:13px;font-weight:850;cursor:pointer}.daily-detail[open] summary{margin-bottom:10px}.daily-chart{width:100%;height:auto;max-height:104px;display:block}.daily-table{margin-top:10px;display:grid;gap:4px}.daily-session{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;align-items:center;background:#13233d;border-radius:8px;padding:6px 9px;font-size:11px}.daily-session>*:nth-child(2),.daily-session>*:nth-child(3){text-align:right}.daily-note{font-size:10px;color:var(--muted);line-height:1.6;margin-top:8px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+
+.purchase-plan{background:#0c1b33;border:1px solid #37577f;border-radius:14px;padding:12px;margin:11px 0;line-height:1.5}
+.purchase-plan.compact{padding:11px}
+.plan-heading{font-size:13px;font-weight:900;display:flex;flex-wrap:wrap;gap:6px;align-items:center;justify-content:space-between}
+.plan-heading span{color:var(--muted);font-size:10px;font-weight:500}
+.plan-range{display:flex;justify-content:space-between;align-items:baseline;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:11px}
+.plan-range span{color:var(--muted)}
+.plan-range b{font-size:13px;color:#d7eaff}
+.plan-result{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin-top:8px}
+.plan-result strong{font-size:20px;color:var(--good);white-space:nowrap}
+.plan-result span{font-size:12px;line-height:1.5;color:#d3e2ff}
+.plan-result span b{color:var(--text)}
+.plan-blocked strong{font-size:14px;color:var(--warn)}
+.plan-note{color:var(--muted);font-size:10px;line-height:1.6;margin-top:7px}
+.quote-guide{margin-top:10px;padding:10px 12px;border-radius:12px;background:#10223a;border:1px solid #35527e;font-size:11px;line-height:1.75;color:#d4e3f8}
+.quote-guide strong{font-weight:800}
 </style></head><body><div class="wrap">
 <div class="hero">
 <h1>Invest Pilot <span class="badge">iPhone</span></h1>
@@ -75,7 +91,7 @@
 <section id="screen" class="pane active">
 <div class="card">
   <h2>まず銘柄を探す</h2>
-  <div class="small">証券コードでも会社名でもOK。検索すると、全市場順位・総合点・現在の評価・理由まで表示します。</div>
+  <div class="small">証券コードでも会社名でもOK。検索すると、全市場順位・総合点・現在の評価・理由まで表示します。</div><div class="small" style="margin-top:4px">値動きは「前営業日比」で表示。銘柄を開くと10営業日の推移と予算内の購入可能株数が確認できます。</div>
   <div class="home-search" style="margin-top:10px">
     <input id="homeSearch" autocomplete="off" placeholder="例：6857 / アドバンテスト">
     <button class="btn" id="homeSearchBtn">検索</button>
@@ -104,6 +120,7 @@
 <div class="card">
   <div class="section-head"><h2 id="rankingTitle">国内株 総合ランキング TOP100</h2><span class="count-label" id="shownCount">0件</span></div>
   <div class="simple-note"><b>これは何の順位？</b><br>解析できる国内上場株を、過去20・60・120・250日の値動き、上昇トレンド、売買代金を同じ基準で採点し、総合点が高い順に並べた順位です。売上成長・利益成長・ROE・営業利益率・PERは「業績参考」として別表示し、現在の順位には混ぜていません。<br><br><b>評価の見方</b><br>🚀積極買い → 🟢買い候補 → 🟡押し目待ち → 🔵監視 → 🔴見送り → ⛔積極売り。点数は将来の上昇率そのものではありません。<br><b>前営業日比</b>は直近の取引日終値との比較です（リアルタイム株価ではありません）。半導体条件で絞っても、銘柄番号は全市場の順位を維持します。</div>
+  <div class="quote-guide"><strong>前営業日比の見方</strong><br><span class="quote-positive">＋350円（＋1.03%）</span>なら前の取引日より350円上昇、<span class="quote-negative">−200円（−0.8%）</span>なら200円下落。<br>銘柄をタップすると、株価と<strong>直近10営業日の推移</strong>を確認できます。「価格帯と購入可能株数」は設定した運用資金からの試算です。</div>
   <div id="stockCards" class="stock-list" style="margin-top:10px"></div>
   <button class="btn secondary full" id="moreBtn" style="margin-top:10px">次の20件を見る</button>
 </div>
@@ -138,7 +155,7 @@
   <input id="researchCode" type="hidden">
   <input id="researchCompany" type="hidden">
   <div id="selectedStockInfo" class="selected-stock"></div>
-  <div id="stockAnalysisCard" class="analysis-card"></div>
+  <div id="stockAnalysisCard" class="analysis-card"></div><div class="small" style="margin:8px 0 4px">前営業日比は前の取引日終値との差（円・％）。緑が上昇、赤が下落です。直近10営業日の一覧も下に表示されます。</div>
   <div class="btnrow">
     <button class="btn" id="researchBtn">検索する</button>
     <button class="btn secondary" id="manualSearchBtn">Googleで開く</button>
