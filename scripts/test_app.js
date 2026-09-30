@@ -5,6 +5,9 @@ const path=require('node:path');
 const root=path.resolve(__dirname,'..');
 require(path.join(root,'core.js'));
 require(path.join(root,'signals.js'));
+require(path.join(root,'industry.js'));
+const industry=globalThis.IPIndustry;
+assert.ok(industry,'Industry module must be available');
 
 const core=globalThis.IPCore,signals=globalThis.IPSignals;
 assert.ok(core&&signals,'Core and signals must be available');
@@ -86,14 +89,43 @@ assert.notEqual(signals.classify({...base,ret20:null,ret5:null,ret60:null}).key,
  'strongbuy','Missing historical prices must not be treated as zero-return signals');
 assert.equal(signals.classify({...base,ret20:0.21,ret5:0.08}).key,'wait');
 
+const sectorSample=new Map([
+ ['A',{code:'A',sector33:'銀行業',metrics_available:5,revenueGrowth:.25,earningsGrowth:.22,returnOnEquity:.20,operatingMargins:.30,trailingPE:10}],
+ ['B',{code:'B',sector33:'銀行業',metrics_available:5,revenueGrowth:.05,earningsGrowth:.10,returnOnEquity:.07,operatingMargins:.12,trailingPE:15}],
+ ['C',{code:'C',sector33:'銀行業',metrics_available:5,revenueGrowth:.03,earningsGrowth:.02,returnOnEquity:.08,operatingMargins:.11,trailingPE:20}],
+ ['D',{code:'D',sector33:'銀行業',metrics_available:5,revenueGrowth:.01,earningsGrowth:.01,returnOnEquity:.05,operatingMargins:.09,trailingPE:25}],
+ ['SOLO',{code:'SOLO',sector33:'陸運業',metrics_available:5,revenueGrowth:.12,earningsGrowth:.12,returnOnEquity:.14,operatingMargins:.11,trailingPE:14}]
+]);
+const industryModel=industry.make(sectorSample,[]);
+const bankA=industry.compare('A',sectorSample.get('A'),industryModel);
+assert.equal(bankA.sector,'銀行業');
+assert.equal(bankA.metrics.find(x=>x.metric==='trailingPE').average,20,'PER industry peer average excludes self');
+assert.equal(bankA.metrics.find(x=>x.metric==='trailingPE').n,3);
+assert.equal(bankA.metrics.find(x=>x.metric==='trailingPE').kind,'positive','Lower positive PER is greener');
+assert.equal(bankA.metrics.find(x=>x.metric==='revenueGrowth').kind,'positive');
+assert.equal(bankA.comparable,true);
+assert.notEqual(bankA.symbol,'⭐','Do not hand out stars on three comparisons');
+const bankD=industry.compare('D',sectorSample.get('D'),industryModel);
+assert.equal(bankD.metrics.find(x=>x.metric==='trailingPE').kind,'negative');
+const solo=industry.compare('SOLO',sectorSample.get('SOLO'),industryModel);
+assert.equal(solo.comparable,false,'Insufficient industry sample blocks relative judgment');
+assert.equal(solo.symbol,'－');
+const withInvalid=industry.make(new Map([...sectorSample,['BAD',{
+ code:'BAD',sector33:'銀行業',metrics_available:5,trailingPE:-7
+}]]),[]);
+assert.equal(industry.compare('A',sectorSample.get('A'),withInvalid).metrics.find(x=>x.metric==='trailingPE').n,3,
+ 'Invalid/negative PEs must not contaminate industry average');
+assert.ok(industry.METRICS.length===5);
+
 const html=fs.readFileSync(path.join(root,'index.html'),'utf8');
 const ui=fs.readFileSync(path.join(root,'ui.js'),'utf8');
 for(const name of ['dailyAsOf','rankingTitle','researchCode','researchQuery',
  'stockAnalysisCard','favoriteList','compareList','stockCards','btRun']){
   assert.ok(html.includes('id="'+name+'"'),'Missing '+name+' in HTML');
 }
+assert.ok(html.includes('src="industry.js"'));
 for(const name of ['loadDailyQuotes','tenDayHistoryHtml','quoteStrip','quoteFeature',
- 'quoteOf','purchasePlanHtml','renderFiveStockBasket','showSelectedAnalysis','renderResearchResult']){
+ 'quoteOf','fundamentalHtml','purchasePlanHtml','renderFiveStockBasket','showSelectedAnalysis','renderResearchResult']){
   assert.ok(ui.includes('function '+name+'('),'Missing '+name+' in UI');
 }
-console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, share affordability, five-stock allocation, search/daily UI contracts');
+console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, share affordability, five-stock allocation, sector comparisons, search/daily UI contracts');
