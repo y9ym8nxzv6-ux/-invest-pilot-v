@@ -127,6 +127,31 @@ const IPCore = (() => {
   function singleLimitPct(capital,risk='mid'){let b=capital<300000?15:capital<1e6?12:capital<5e6?8:6;if(risk==='low')b*=.75;if(risk==='high')b*=1.25;return Math.max(4,Math.min(18,b));}
   function budgetFor(score,capital,risk,rank){const lim=capital*singleLimitPct(capital,risk)/100,dec=Math.max(.45,1-Math.max(0,rank-1)*.045),mult=Math.max(.45,Math.min(1,score/88)),raw=lim*dec*mult,step=capital<1e6?1000:10000;return Math.max(0,Math.floor(raw/step)*step)}
   function decorateForCapital(items,capital=100000,risk='mid',lot=1,mode='all'){return items.filter(x=>modeOK(x,mode)).slice(0,100).map((x,i)=>{const globalRank=Number.isFinite(Number(x.rank))&&Number(x.rank)>0?Number(x.rank):i+1;const budget=budgetFor(x.technical_score,capital,risk,i+1);const shares=x.close>0?Math.floor(budget/(x.close*lot))*lot:0;return {...x,rank:globalRank,filtered_position:i+1,budget_yen:budget,shares_by_budget:shares}})}
+  function buildPurchasePlan(stock,{capital=100000,risk='mid',lot=1,price=null,history=[]}={}){
+    const totalCapital=Math.max(0,Number(capital)||0);
+    const unit=Math.max(1,Math.floor(Number(lot)||1));
+    const effectivePrice=Number(price)>0?Number(price):Number(stock?.close);
+    const rank=Math.max(1,Math.min(100,Number(stock?.filtered_position)||Number(stock?.rank)||1));
+    const score=Number(stock?.technical_score)||0;
+    const budget=Number.isFinite(Number(stock?.budget_yen))&&Number(stock?.budget_yen)>=0
+      ? Number(stock.budget_yen):budgetFor(score,totalCapital,risk,rank);
+    const minRequired=effectivePrice>0?effectivePrice*unit:null;
+    const shares=minRequired>0?Math.max(0,Math.floor((budget+1e-7)/minRequired))*unit:0;
+    const total=shares>0?shares*effectivePrice:0;
+    const valid=(Array.isArray(history)?history:[]).map(x=>Number(x?.close))
+      .filter(x=>Number.isFinite(x)&&x>0).slice(-10);
+    return {
+      price:effectivePrice>0?effectivePrice:null,
+      min_price:valid.length>=2?Math.min(...valid):null,
+      max_price:valid.length>=2?Math.max(...valid):null,
+      count:valid.length,
+      budget_yen:budget,capital_yen:totalCapital,lot:unit,
+      shares,estimated_total:total,min_required:minRequired,
+      total_capital_insufficient:minRequired!==null&&minRequired>totalCapital,
+      allocation_insufficient:minRequired!==null&&minRequired>budget,
+      within_budget:shares>0&&total<=budget+1e-5
+    };
+  }
   function maxDrawdown(vals){let peak=-Infinity,mdd=0;for(const v of vals){peak=Math.max(peak,v);if(peak>0)mdd=Math.min(mdd,v/peak-1)}return mdd}
   function runBacktest(priceMap,{mode='all',capital=100000,risk='mid',lot=1,topN=10,rebalanceDays=20,costBps=10,reserve=.10,theme={}}={}){
     const dates=[...new Set([...priceMap.values()].flatMap(x=>x.points.map(p=>p[0])))].sort((a,b)=>a-b); if(dates.length<275)throw new Error('履歴が短すぎます。24か月履歴を取得してください。');
@@ -139,7 +164,7 @@ const IPCore = (() => {
   }
   function classifyText(text){let score=0,pos=[],neg=[];for(const [k,v] of Object.entries(POS_TERMS))if(text.includes(k)){score+=v;pos.push(k)}for(const [k,v] of Object.entries(NEG_TERMS))if(text.includes(k)){score+=v;neg.push(k)}return {score:Math.max(-18,Math.min(18,score)),positive:[...new Set(pos)],negative:[...new Set(neg)]};}
   async function parseArchiveBuffer(buffer,link,isSplit=false,ZipImpl=globalThis.JSZip){ if(!ZipImpl)throw new Error('JSZip unavailable'); const u8=new Uint8Array(buffer); const out=[]; if(u8[0]===0x50&&u8[1]===0x4b){ const zip=await ZipImpl.loadAsync(buffer); const names=Object.keys(zip.files).filter(n=>!zip.files[n].dir&&/\.(csv|txt)$/i.test(n)).sort(); for(const name of names){ const bytes=await zip.files[name].async('uint8array'); const text=decodeBytes(bytes); const def=inferDateFromName(name,link?.kind==='day'?parseDateInt(link.key):null); out.push(...(isSplit?parseSplitDelimitedText(text,(link?.url||'')+'#'+name):parseDelimitedText(text,def,(link?.url||'')+'#'+name))); } } else { const text=decodeBytes(u8),def=inferDateFromName(link?.label||'',link?.kind==='day'?parseDateInt(link.key):null); out.push(...(isSplit?parseSplitDelimitedText(text,link?.url||''):parseDelimitedText(text,def,link?.url||''))); } return out; }
-  return {POS_TERMS,NEG_TERMS,SEMI_BASE,DEMO,normText,cleanCode,num,htmlDecode,stripTags,parseJpDateLabel,parseDateInt,dateIntToISO,inferDateFromName,discoverLinks,selectPriceLinks,selectSplitLinks,parseRatioText,parseCSVLine,decodeBytes,parseDelimitedText,parseSplitDelimitedText,appendRows,normalizePriceMap,applyCorporateActions,semiconductorInfo,modeOK,scorePriceMap,rankMetrics,buildRawMetrics,singleLimitPct,budgetFor,decorateForCapital,runBacktest,classifyText,parseArchiveBuffer,upperBoundDate};
+  return {POS_TERMS,NEG_TERMS,SEMI_BASE,DEMO,normText,cleanCode,num,htmlDecode,stripTags,parseJpDateLabel,parseDateInt,dateIntToISO,inferDateFromName,discoverLinks,selectPriceLinks,selectSplitLinks,parseRatioText,parseCSVLine,decodeBytes,parseDelimitedText,parseSplitDelimitedText,appendRows,normalizePriceMap,applyCorporateActions,semiconductorInfo,modeOK,scorePriceMap,rankMetrics,buildRawMetrics,singleLimitPct,budgetFor,decorateForCapital,buildPurchasePlan,runBacktest,classifyText,parseArchiveBuffer,upperBoundDate};
 })();
 if(typeof globalThis!=='undefined')globalThis.IPCore=IPCore;
 
