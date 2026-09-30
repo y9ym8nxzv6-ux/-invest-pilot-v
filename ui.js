@@ -487,6 +487,7 @@ if(typeof document!=='undefined'){
     const rows=Array.isArray(d.candidates)?d.candidates:(Array.isArray(d.top100)?d.top100:[]);
     if(!rows.length)throw new Error('クラウドランキングが空です');
     state.ranked=rows.slice(0,500);
+    rebuildIndustryBenchmarks();
     state.snapshot={key:'cloud',updatedAt:Date.parse(d.generated_at)||Date.now(),generatedAt:d.generated_at||null,months:0,asof:null,actionCount:0,ranked:state.ranked};
     state.months=0;
     renderStatus();renderRows();
@@ -572,21 +573,61 @@ if(typeof document!=='undefined'){
   function fundamentalLabelClass(key){
     return key==='good'?'good':key==='caution'?'bad':'warn';
   }
+  function industryComparison(code,f){
+    if(!globalThis.IPIndustry||!state.fundamentals)return null;
+    if(!state.industryBenchmarks)state.industryBenchmarks=IPIndustry.make(state.fundamentals,state.ranked);
+    return IPIndustry.compare(code,f,state.industryBenchmarks);
+  }
+  function rebuildIndustryBenchmarks(){
+    if(globalThis.IPIndustry&&state.fundamentals){
+      state.industryBenchmarks=IPIndustry.make(state.fundamentals,state.ranked);
+    }
+  }
   function fundamentalHtml(code,compact=false){
-    const f=state.fundamentals&&state.fundamentals.get(String(code));
-    if(!f)return compact?'<div class="stock-reason">業績参考：データ未取得</div>':'<div class="explain-box"><b>業績参考</b><br>この銘柄は定期取得対象外、または業績データ取得前です。総合順位には影響しません。</div>';
-    const cls=fundamentalLabelClass(f.reference_key);
-    const score=hasNumber(f.reference_score)?Number(f.reference_score).toFixed(0)+'点':'—';
-    const cachedNote=f.is_cached?' · 前回取得値 '+quoteDate(String(f.last_success_at||'').slice(0,10)):'';
-    if(compact)return '<div class="stock-reason">業績参考：<b class="'+cls+'">'+esc(f.reference_label||'—')+'</b> '+score+esc(cachedNote)+'（順位には不使用）</div>';
-    const cells=[
-      ['売上成長',pct(f.revenueGrowth)],
-      ['利益成長',pct(f.earningsGrowth)],
-      ['ROE',pct(f.returnOnEquity)],
-      ['営業利益率',pct(f.operatingMargins)],
-      ['PER',hasNumber(f.trailingPE)?Number(f.trailingPE).toFixed(1)+'倍':'—']
-    ].map(x=>'<div class="analysis-cell"><div class="k">'+x[0]+'</div><div class="v">'+x[1]+'</div></div>').join('');
-    return '<div class="explain-box"><b>業績参考：<span class="'+cls+'">'+esc(f.reference_label||'—')+' '+score+'</span></b><br>モメンタム順位とは別枠の参考情報です。売上成長・利益成長・ROE・営業利益率・PERを見ています。'+esc(cachedNote)+'。資料の対象期は銘柄や指標で異なることがあります。</div><div class="analysis-grid">'+cells+'</div>';
+    const f=state.fundamentals?.get(String(code));
+    if(!f)return compact
+      ?'<div class="fund-compact">業績参考：データ未取得</div>'
+      :'<div class="explain-box"><b>業績参考：データ未取得</b><br>この銘柄は対象外、または業績データの取得前です。モメンタム順位には影響しません。</div>';
+    const cachedNote=f.is_cached?'前回取得 '+quoteDate(String(f.last_success_at||'').slice(0,10)):'';
+    const comparison=industryComparison(code,f);
+    const g=comparison||{symbol:'－',label:'比較データ不足',kind:'neutral',sector:'業種不明',metrics:[],used:0};
+    const symbol='<span class="'+esc(g.kind)+'">'+esc(g.symbol)+' '+esc(g.label)+'</span>';
+    if(compact){
+      const examples=(g.metrics||[]).filter(x=>x.comparable).filter(x=>x.metric==='trailingPE'||x.metric==='returnOnEquity');
+      const numbers=examples.map(x=>{
+        const isPE=x.metric==='trailingPE';
+        const v=isPE?Number(x.value).toFixed(1)+'倍':pct(x.value);
+        const avg=isPE?Number(x.average).toFixed(1)+'倍':pct(x.average);
+        return '<span class="'+esc(x.kind)+'">'+(isPE?'PER ':'ROE ')+v+'</span>（同業平均 '+avg+'）';
+      });
+      return '<div class="fund-compact">業績の同業比較：<b>'+symbol+'</b>'+
+        (numbers.length?'<br>'+numbers.join(' · '):' · 比較可能な企業が不足')+
+        (cachedNote?'<br>'+esc(cachedNote):'')+'</div>';
+    }
+    const byKey=new Map((g.metrics||[]).map(x=>[x.metric,x]));
+    const lines=(IPIndustry?.METRICS||[]).map(m=>{
+      const x=byKey.get(m.key);
+      const selfValue=hasNumber(f[m.key])?(m.unit==='倍'?Number(f[m.key]).toFixed(1)+'倍':pct(f[m.key])):'—';
+      const value=x?.comparable
+        ?'<div class="fund-value '+esc(x.kind)+'">'+selfValue+
+          '<span class="fund-peer">（同業平均 '+(m.unit==='倍'?Number(x.average).toFixed(1)+'倍':pct(x.average))+
+          '／比較'+x.n+'社）</span></div>'
+        :'<div class="fund-value neutral">'+selfValue+'<span class="fund-peer">（同業平均：比較対象不足'+
+          (x?.n?'・'+x.n+'社':'')+'）</span></div>';
+      return '<div class="fund-row"><span class="fund-name">'+esc(m.label)+'</span>'+value+
+        '<span class="fund-symbol '+esc(x?.kind||'neutral')+'" title="'+esc(x?.grade||'比較対象不足')+'">'+esc(x?.symbol||'－')+'</span></div>';
+    }).join('');
+    const resultCount=(g.metrics||[]).filter(x=>x.comparable).length;
+    return '<section class="fund-summary" aria-label="同業種との業績比較">'+
+      '<div class="fund-heading"><span>業績の同業比較</span><span class="fund-tag '+esc(g.kind)+'">'+symbol+'</span></div>'+
+      '<div class="fund-explain">'+esc(g.sector||'業種不明')+' · 比較できた指標 '+resultCount+'/5</div>'+
+      '<div class="fund-table">'+lines+'</div>'+
+      '<div class="fund-explain">括弧内は、取得できたランキングTOP100内の同業他社の平均（自社を除く）。'+
+      '東証の全業種平均ではありません。比較先が3社未満なら評価を保留します。'+
+      '緑＝同業平均より上、赤＝下。ただしPERだけは低PERを緑、高PERを赤で表示し、割安・割高の断定ではありません。'+
+      '✕・△・－・○・◎・⭐は同業比較上の目安で、株価の将来予測や購入推奨ではありません。'+
+      (cachedNote?' '+esc(cachedNote)+'の参考データです。':'')+
+      '</div></section>';
   }
   async function loadFundamentals(){
     if(state.fundamentals)return state.fundamentals;
@@ -598,6 +639,7 @@ if(typeof document!=='undefined'){
       const map=new Map();
       for(const [code,x] of Object.entries(d.stocks||{}))map.set(String(code),x);
       state.fundamentals=map;
+      rebuildIndustryBenchmarks();
       renderRows();
       if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
       renderCompare().catch(()=>{});
