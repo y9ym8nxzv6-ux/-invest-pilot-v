@@ -49,6 +49,20 @@ require(int(fundamentals.get("count",0))>=90,"fundamental cache too small")
 require(int(fundamentals.get("usable_count",0))>=60,"too few usable fundamental rows")
 require(fundamentals.get("ranking_impact")=="none","fundamentals must remain reference-only")
 
+daily=load_json(Path("data/daily-changes.json"))
+require(int(daily.get("count",0))>=2500,"daily quote count too small")
+require(len(daily.get("stocks",{}))==int(daily.get("count",0)),"daily quote count mismatch")
+daily_rows=list(daily["stocks"].values())
+for q in daily_rows[:200]:
+    close=q.get("close"); previous=q.get("previous_close")
+    require(close is not None and previous is not None and previous>0,"missing quote close")
+    require(abs((close-previous)-q.get("change_yen",float("inf")))<0.02,"daily yen change inconsistent")
+    require(abs((close/previous-1)-q.get("change_pct",float("inf")))<0.00002,"daily percent change inconsistent")
+    sessions=q.get("daily_history",[])
+    require(2<=len(sessions)<=10,"daily session length must be 2 to 10")
+    require(sessions[-1]["date"]==q.get("price_date"),"daily price date inconsistent")
+    require(sessions[-1]["close"]==q["close"],"daily last close inconsistent")
+
 strategy=load_json(Path("data/strategy-config.json"))
 require(int(strategy.get("recommended_days",0)) in (10,20,40,60,100),"invalid recommended rebalance days")
 evals=strategy.get("evaluations",[])
@@ -66,5 +80,6 @@ print({
     "history_dates":len(history["dates"]),
     "fundamentals":fundamentals["count"],
     "fundamentals_usable":fundamentals["usable_count"],
+    "daily_quotes":daily["count"],
     "recommended_days":strategy["recommended_days"],
 })
