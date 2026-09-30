@@ -146,30 +146,64 @@ def fetch_one(row):
         return row["code"],{"code":row["code"],"company":row.get("company",""),"ticker":ticker,"error":str(e),"reference_score":None,"reference_label":"取得失敗","reference_key":"unknown","metrics_available":0}
 
 def main():
-    if not RANKING.exists():raise SystemExit("ranking missing")
+    if not RANKING.exists():
+        raise SystemExit("ranking missing")
     ranking=json.loads(RANKING.read_text(encoding="utf-8"))
     rows=(ranking.get("top100") or [])[:100]
+    previous={}
+    previous_date=None
+    if OUT.exists():
+        try:
+            old=json.loads(OUT.read_text(encoding="utf-8"))
+            previous=old.get("stocks",{})
+            previous_date=old.get("generated_at")
+        except (ValueError, OSError):
+            pass
+
+    now=datetime.now(timezone.utc)
+    def valid_cached(x):
+        if not x or int(x.get("metrics_available",0))<2:
+            return False
+        source_date=x.get("last_success_at") or previous_date
+        if not source_date:
+            return False
+        try:
+            dt=datetime.fromisoformat(str(source_date).replace("Z","+00:00"))
+            return abs((now-dt).total_seconds())<=45*86400
+        except (ValueError,TypeError):
+            return False
+
     stocks={}
     with ThreadPoolExecutor(max_workers=4) as ex:
         futures=[ex.submit(fetch_one,row) for row in rows]
         done=0
         for fut in as_completed(futures):
             code,result=fut.result()
+            if int(result.get("metrics_available",0))<2 and valid_cached(previous.get(code)):
+                result={**previous[code], "source_mode":"cached_previous_success",
+                        "is_cached":True,
+                        "last_success_at":previous[code].get("last_success_at") or previous_date}
+            elif int(result.get("metrics_available",0))>=2:
+                result={**result, "is_cached":False, "last_success_at":now.isoformat()}
             stocks[code]=result
             done+=1
-            print(f"fundamentals {done}/{len(rows)} {code} metrics={result.get('metrics_available',0)}",flush=True)
+            print(f"fundamentals {done}/{len(rows)} {code} metrics={result.get('metrics_available',0)} cached={result.get('is_cached',False)}",flush=True)
             time.sleep(0.05)
     ok=sum(1 for x in stocks.values() if x.get("metrics_available",0)>=2)
+    cached=sum(1 for x in stocks.values() if x.get("is_cached"))
+    if ok<60:
+        raise RuntimeError(f"fundamentals coverage below release threshold: {ok}/100. Previous file kept unchanged.")
     payload={
-        "generated_at":datetime.now(timezone.utc).isoformat(),
+        "generated_at":now.isoformat(),
         "count":len(stocks),
         "usable_count":ok,
+        "cached_count":cached,
         "scope":"top100",
         "ranking_impact":"none",
-        "method":"直近年度の財務諸表等から売上成長・利益成長・ROE・営業利益率・PERを参考評価。モメンタム総合順位には反映しない。",
+        "method":"取得できた財務指標（売上・利益成長率、ROE、営業利益率、PER）を参考採点。指標の対象期間は一致しないことがあります。モメンタム総合順位には反映しない。",
         "stocks":stocks
     }
     OUT.write_text(json.dumps(payload,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
-    print("fundamentals generated",len(stocks),"usable",ok,flush=True)
+    print("fundamentals generated",len(stocks),"usable",ok,"cached",cached,flush=True)
 
 if __name__=="__main__":main()
