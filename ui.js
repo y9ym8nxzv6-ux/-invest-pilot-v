@@ -1,15 +1,66 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null,fundamentals:null,fundamentalsPromise:null};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null,fundamentals:null,fundamentalsPromise:null,dailyQuotes:null,dailyPromise:null,dailyUpdatedAt:null};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
     get relay(){return localStorage.getItem('ip7_relay')||'auto'}, set relay(v){localStorage.setItem('ip7_relay',v)},
     get theme(){return {extra:(localStorage.getItem('ip7_semi_extra')||'').split(',').map(x=>x.trim()).filter(Boolean),exclude:(localStorage.getItem('ip7_semi_exclude')||'').split(',').map(x=>x.trim()).filter(Boolean)}}
   };
-  const yen=n=>Number.isFinite(+n)?Math.round(+n).toLocaleString('ja-JP')+'円':'--'; const pct=n=>Number.isFinite(+n)?((+n)*100).toFixed(1)+'%':'--'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const hasNumber=n=>n!==null&&n!==undefined&&n!==''&&Number.isFinite(Number(n)); const yen=n=>hasNumber(n)?Math.round(Number(n)).toLocaleString('ja-JP')+'円':'—'; const pct=n=>hasNumber(n)?(Number(n)*100).toFixed(1)+'%':'—'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const researchJobs=new Map();
   let researchWorker=null;
   const normSearch=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').trim();
+  function quoteOf(code){return state.dailyQuotes?.get(String(code))||null}
+  function moneyWithDecimals(n){return hasNumber(n)?Number(n).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円':'—'}
+  function signedYen(n){if(!hasNumber(n))return '—';const v=Number(n);return (v>0?'+':v<0?'−':'±')+Math.abs(v).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円'}
+  function signedPct(n){if(!hasNumber(n))return '—';const v=Number(n);return (v>0?'+':'')+(v*100).toFixed(2)+'%'}
+  function changeColor(n){return !hasNumber(n)?'quote-flat':Number(n)>0?'quote-positive':Number(n)<0?'quote-negative':'quote-flat'}
+  function quoteDate(date){return /^\d{4}-\d{2}-\d{2}$/.test(String(date||''))?String(date).replaceAll('-','/'):'基準日不明'}
+  function quoteStrip(code){
+    const q=quoteOf(code);
+    if(!q)return '<div class="quote-strip"><span class="quote-empty">前営業日比：未取得</span><span class="quote-date">解析時の参考価格を表示</span></div>';
+    return '<div class="quote-strip"><span class="quote-change '+changeColor(q.change_pct)+'">前営業日比 '+signedYen(q.change_yen)+'（'+signedPct(q.change_pct)+'）</span><span class="quote-date">終値 '+quoteDate(q.price_date)+'</span></div>';
+  }
+  function quoteFeature(code){
+    const q=quoteOf(code);
+    if(!q)return '<div class="quote-feature"><b>前営業日比</b><span class="quote-date">終値データを取得できませんでした。最新データを再読込すると更新される場合があります。</span></div>';
+    return '<div class="quote-feature"><div class="small">'+quoteDate(q.price_date)+' 終値 '+moneyWithDecimals(q.close)+'</div><b class="quote-change '+changeColor(q.change_pct)+'">'+signedYen(q.change_yen)+'（'+signedPct(q.change_pct)+'）</b><span class="quote-date">前営業日の終値 '+moneyWithDecimals(q.previous_close)+' からの変化。リアルタイムではありません。</span></div>';
+  }
+  function tenDayHistoryHtml(code){
+    const q=quoteOf(code),hist=Array.isArray(q?.daily_history)?q.daily_history:[];
+    if(hist.length<2)return '<div class="daily-note">直近10営業日の履歴はまだ利用できません。</div>';
+    const values=hist.map(x=>Number(x.close));
+    const lo=Math.min(...values),hi=Math.max(...values),span=Math.max(0.01,hi-lo);
+    const points=values.map((v,i)=>{const x=10+i*320/Math.max(1,values.length-1),y=86-76*(v-lo)/span;return x.toFixed(1)+','+y.toFixed(1)}).join(' ');
+    const stroke=Number(hist.at(-1).close)>=Number(hist[0].close)?'#4bd78a':'#ff7777';
+    const svg='<svg class="daily-chart" viewBox="0 0 340 100" role="img" aria-label="直近10営業日の終値推移"><line x1="10" y1="88" x2="330" y2="88" stroke="#395078" stroke-width="1"/><polyline points="'+points+'" fill="none" stroke="'+stroke+'" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/></svg>';
+    const rows=hist.map(x=>'<div class="daily-session"><span>'+quoteDate(x.date).slice(5)+'</span><span>'+moneyWithDecimals(x.close)+'</span><strong class="'+changeColor(x.change_pct)+'">'+signedPct(x.change_pct)+'</strong></div>').join('');
+    return '<details class="daily-detail" open><summary>直近'+hist.length+'営業日：終値の推移</summary>'+svg+'<div class="daily-table">'+rows+'</div><div class="daily-note">終値と前営業日比。日付は取引日で、土日・休場日は含みません。株式分割等では単純な前日比が大きく変化することがあります。</div></details>';
+  }
+  function showDailyStatus(){
+    const el=$('dailyAsOf');if(!el)return;
+    if(!state.dailyQuotes){el.textContent='前営業日比：終値データを読み込み中…';return}
+    const dates=[...state.dailyQuotes.values()].map(x=>x.price_date).filter(Boolean);
+    const latest=dates.length?dates.sort().at(-1):null;
+    el.textContent='終値・前営業日比：'+(latest?quoteDate(latest):'基準日不明')+'時点（リアルタイムではありません） · '+state.dailyQuotes.size.toLocaleString('ja-JP')+'銘柄';
+  }
+  async function loadDailyQuotes(force=false){
+    if(state.dailyQuotes&&!force)return state.dailyQuotes;
+    if(state.dailyPromise)return state.dailyPromise;
+    state.dailyPromise=(async()=>{
+      const r=await fetch('./data/daily-changes.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw new Error('前営業日比データ未生成');
+      const d=await r.json(),map=new Map(Object.entries(d.stocks||{}));
+      if(map.size<2500)throw new Error('前営業日比データの件数不足');
+      state.dailyQuotes=map;state.dailyUpdatedAt=d.generated_at||null;
+      showDailyStatus();renderRows();
+      if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
+      renderCompare().catch(()=>{});renderFavorites();
+      return map;
+    })();
+    try{return await state.dailyPromise}finally{state.dailyPromise=null}
+  }
+
   function formatAge(ts){
     const ms=Date.now()-Number(ts||0);
     if(!Number.isFinite(ms)||ms<0)return '更新時刻不明';
@@ -545,6 +596,7 @@ if(typeof document!=='undefined'){
       loadCloudHistory().catch(()=>{});
       loadStrategyConfig().catch(()=>{});
       loadFundamentals().catch(()=>{});
+      loadDailyQuotes().catch(()=>{if(!state.dailyQuotes&&$('dailyAsOf'))$('dailyAsOf').textContent='前営業日比：現在取得できません（ランキングは表示可能）';});
     },250);
   }
   async function syncData(months=13){
