@@ -1,5 +1,5 @@
-const CACHE='invest-pilot-app-v12';
-const DATA_CACHE='invest-pilot-data-v12';
+const CACHE='invest-pilot-app-v13';
+const DATA_CACHE='invest-pilot-data-v13';
 const ASSETS=['./','./index.html','./core.js','./signals.js','./ui.js','./research-worker.js','./manifest.webmanifest'];
 const DATA_FILES=['latest-ranking.json','all-analysis.json','stock-master.json','research.json','backtest-history.json','strategy-config.json','fundamentals.json','daily-changes.json'];
 
