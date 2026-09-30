@@ -45,6 +45,10 @@
 @media(max-width:520px){.guide-grid{grid-template-columns:1fr}.compare-grid{grid-template-columns:repeat(2,1fr)}}
 
 .strategy-auto{margin-top:10px;padding:12px;border-radius:14px;background:#0e1b33;border:1px solid #35527f}.strategy-auto .big{font-size:18px;font-weight:950;margin-top:4px}.strategy-auto .meta{font-size:10px;color:var(--muted);line-height:1.5;margin-top:5px}.strategy-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:11px}.strategy-table th,.strategy-table td{padding:7px 6px;border-bottom:1px solid #24395f;text-align:right}.strategy-table th:first-child,.strategy-table td:first-child{text-align:left}.strategy-table tr.recommended{background:#123e2c}
+
+.quote-strip{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:5px;margin:10px 0 2px;padding:8px 10px;border:1px solid #304363;background:#0a182c;border-radius:10px}.quote-change{font-size:14px;font-weight:800}.quote-date,.quote-empty{font-size:10px;color:var(--muted)}.quote-positive{color:var(--good)}.quote-negative{color:var(--bad)}.quote-flat{color:#e5edf9}.quote-feature{margin:11px 0;padding:12px;background:#101f39;border:1px solid #304d7a;border-radius:13px}.quote-feature .quote-change{font-size:21px;display:block;margin-top:4px}.quote-feature .quote-date{display:block;margin-top:4px}
+.daily-detail{margin-top:12px;padding:12px;background:#0b1931;border:1px solid #355078;border-radius:14px}.daily-detail summary{font-size:13px;font-weight:850;cursor:pointer}.daily-detail[open] summary{margin-bottom:10px}.daily-chart{width:100%;height:auto;max-height:104px;display:block}.daily-table{margin-top:10px;display:grid;gap:4px}.daily-session{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;align-items:center;background:#13233d;border-radius:8px;padding:6px 9px;font-size:11px}.daily-session>*:nth-child(2),.daily-session>*:nth-child(3){text-align:right}.daily-note{font-size:10px;color:var(--muted);line-height:1.6;margin-top:8px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 </style></head><body><div class="wrap">
 <div class="hero">
 <h1>Invest Pilot <span class="badge">iPhone</span></h1>
@@ -76,7 +80,7 @@
     <input id="homeSearch" autocomplete="off" placeholder="例：6857 / アドバンテスト">
     <button class="btn" id="homeSearchBtn">検索</button>
   </div>
-  <div class="health-line"><span id="dataHealthDot" class="health-dot"></span><span id="dataHealthText" class="health-text">データ状態を確認中…</span></div>
+  <div class="health-line"><span id="dataHealthDot" class="health-dot"></span><span id="dataHealthText" class="health-text">データ状態を確認中…</span></div><div class="small" id="dailyAsOf">前営業日比：終値データを読み込み中…</div>
   <div class="guide-grid">
     <div class="guide-step"><b>① 評価を見る</b><span>🚀積極買い〜⛔積極売りの6段階</span></div>
     <div class="guide-step"><b>② 理由を見る</b><span>過去の値動き・トレンド・売買代金を表示</span></div>
@@ -98,8 +102,8 @@
   <div class="btnrow"><button class="btn" id="syncBtn">最新データを読み込む</button><button class="btn secondary" id="recalcBtn">条件を反映</button></div>
 </div>
 <div class="card">
-  <div class="section-head"><h2>国内株 総合ランキング TOP100</h2><span class="count-label" id="shownCount">0件</span></div>
-  <div class="simple-note"><b>これは何の順位？</b><br>解析できる国内上場株を、過去20・60・120・250日の値動き、上昇トレンド、売買代金を同じ基準で採点し、総合点が高い順に並べた順位です。売上成長・利益成長・ROE・営業利益率・PERは「業績参考」として別表示し、現在の順位には混ぜていません。<br><br><b>評価の見方</b><br>🚀積極買い → 🟢買い候補 → 🟡押し目待ち → 🔵監視 → 🔴見送り → ⛔積極売り。点数は将来の上昇率そのものではありません。</div>
+  <div class="section-head"><h2 id="rankingTitle">国内株 総合ランキング TOP100</h2><span class="count-label" id="shownCount">0件</span></div>
+  <div class="simple-note"><b>これは何の順位？</b><br>解析できる国内上場株を、過去20・60・120・250日の値動き、上昇トレンド、売買代金を同じ基準で採点し、総合点が高い順に並べた順位です。売上成長・利益成長・ROE・営業利益率・PERは「業績参考」として別表示し、現在の順位には混ぜていません。<br><br><b>評価の見方</b><br>🚀積極買い → 🟢買い候補 → 🟡押し目待ち → 🔵監視 → 🔴見送り → ⛔積極売り。点数は将来の上昇率そのものではありません。<br><b>前営業日比</b>は直近の取引日終値との比較です（リアルタイム株価ではありません）。半導体条件で絞っても、銘柄番号は全市場の順位を維持します。</div>
   <div id="stockCards" class="stock-list" style="margin-top:10px"></div>
   <button class="btn secondary full" id="moreBtn" style="margin-top:10px">次の20件を見る</button>
 </div>
@@ -115,7 +119,7 @@
   <div id="compareList" class="compare-list"><div class="empty-soft">まだ比較する銘柄がありません。</div></div>
 </div>
 </section>
-<section id="backtest" class="pane"><div class="card"><h2>過去の成績を確認</h2><div class="simple-note">同じ条件を過去データに当てた場合の結果です。将来の利益を保証するものではありません。</div>
+<section id="backtest" class="pane"><div class="card"><h2>過去の成績を確認</h2><div class="simple-note">同じ条件を過去データに当てた場合の参考検証です。現在取得できる候補銘柄を過去にさかのぼって使用するため、生存者バイアスがあり、当時の全上場株を使った完全な再現ではありません。将来の利益を保証しません。</div>
 <div id="strategyAutoCard" class="strategy-auto">
   <div class="small">自動改善</div>
   <div class="big" id="strategyAutoTitle">おすすめの見直し間隔を計算中…</div>
@@ -125,7 +129,7 @@
 <section id="research" class="pane">
 <div class="card">
   <h2>銘柄を検索</h2>
-  <div class="small">証券コードでも会社名でも検索できます。検索すると、ランキング外でも総合順位・点数・現在の評価・理由まで表示します。TOP100は業績参考も表示します。</div>
+  <div class="small">証券コードでも会社名でも検索できます。検索すると、ランキング外でも総合順位・点数・現在の評価・理由を表示。前営業日比と直近10営業日の株価推移も確認できます。業績参考は取得できた銘柄に表示します。</div>
   <label>証券コード または 会社名</label>
   <div class="search-wrap">
     <input id="researchQuery" autocomplete="off" placeholder="例：6857 / アドバンテスト">
