@@ -11,7 +11,7 @@ if(typeof document!=='undefined'){
   const researchJobs=new Map();
   let researchWorker=null;
   const normSearch=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').trim();
-  function quoteOf(code){return state.dailyQuotes?.get(String(code))||null}
+  function quoteOf(code){const q=state.dailyQuotes?.get(String(code))||null;if(!q?.price_date)return null;const day=Date.parse(q.price_date+'T00:00:00+09:00');return Number.isFinite(day)&&Date.now()-day<=10*86400000?q:null}
   function moneyWithDecimals(n){return hasNumber(n)?Number(n).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円':'—'}
   function signedYen(n){if(!hasNumber(n))return '—';const v=Number(n);return (v>0?'+':v<0?'−':'±')+Math.abs(v).toLocaleString('ja-JP',{maximumFractionDigits:2})+'円'}
   function signedPct(n){if(!hasNumber(n))return '—';const v=Number(n);return (v>0?'+':'')+(v*100).toFixed(2)+'%'}
@@ -43,7 +43,9 @@ if(typeof document!=='undefined'){
     if(!state.dailyQuotes){el.textContent='前営業日比：終値データを読み込み中…';return}
     const dates=[...state.dailyQuotes.values()].map(x=>x.price_date).filter(Boolean);
     const latest=dates.length?dates.sort().at(-1):null;
-    el.textContent='終値・前営業日比：'+(latest?quoteDate(latest):'基準日不明')+'時点（リアルタイムではありません） · '+state.dailyQuotes.size.toLocaleString('ja-JP')+'銘柄';
+    const time=latest?Date.parse(latest+'T00:00:00+09:00'):NaN;
+    const stale=Number.isFinite(time)&&Date.now()-time>7*86400000;
+    el.textContent='終値・前営業日比：'+(latest?quoteDate(latest):'基準日不明')+'時点'+(stale?'（更新が遅れています）':'')+'（リアルタイムではありません） · '+state.dailyQuotes.size.toLocaleString('ja-JP')+'銘柄';
   }
   async function loadDailyQuotes(force=false){
     if(state.dailyQuotes&&!force)return state.dailyQuotes;
@@ -595,15 +597,18 @@ if(typeof document!=='undefined'){
     finally{state.historyPromise=null}
   }
   function prefetchCloudAssets(){
+    // iPhoneの描画を優先。大きな履歴JSONは最後に読み込む。
     setTimeout(()=>{
+      loadDailyQuotes().catch(()=>{if(!state.dailyQuotes&&$('dailyAsOf'))$('dailyAsOf').textContent='前営業日比：現在取得できません（ランキングは表示可能）';});
       loadStockMaster().catch(()=>{});
       loadAllAnalysis().catch(()=>{});
+    },200);
+    setTimeout(()=>{
       loadCloudResearch().catch(()=>{});
-      loadCloudHistory().catch(()=>{});
       loadStrategyConfig().catch(()=>{});
       loadFundamentals().catch(()=>{});
-      loadDailyQuotes().catch(()=>{if(!state.dailyQuotes&&$('dailyAsOf'))$('dailyAsOf').textContent='前営業日比：現在取得できません（ランキングは表示可能）';});
-    },250);
+    },1500);
+    setTimeout(()=>loadCloudHistory().catch(()=>{}),3500);
   }
   async function syncData(months=13){
     if(state.busy)return;state.busy=true;toggleBusy(true);startWait(months>=24?'長期データを取得・解析中':'データを取得・解析中',months>=24?240:180);setProgress(2,'価格データを確認中…');const started=Date.now();
