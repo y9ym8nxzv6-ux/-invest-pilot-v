@@ -80,6 +80,32 @@
 .basket-advice strong{display:block;font-size:13px}.basket-advice p{font-size:11px;line-height:1.7;color:#c5d7f3;margin:6px 0 0}
 .basket-note{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6}
 @media(max-width:480px){.basket-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.fund-summary{margin:10px 0 5px;padding:12px;background:#101f39;border:1px solid #34547c;border-radius:12px}
+.fund-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:850}
+.fund-tag{display:inline-flex;align-items:center;gap:5px;border:1px solid #466283;background:#142943;border-radius:24px;padding:5px 9px;font-size:12px;white-space:nowrap}
+.fund-tag.positive{color:var(--good);border-color:#2c6d50}
+.fund-tag.negative{color:var(--bad);border-color:#8b3c4e}
+.fund-tag.neutral{color:#cddbf0}
+.fund-table{margin-top:10px;display:grid;gap:6px}
+.fund-row{display:grid;grid-template-columns:minmax(78px,1fr) minmax(135px,2fr) 32px;gap:7px;align-items:center;background:#0b182e;border:1px solid #21375b;border-radius:10px;padding:9px}
+.fund-name{font-size:11px;color:#bdcee6}
+.fund-value{text-align:right;font-size:14px;font-weight:850;font-variant-numeric:tabular-nums}
+.fund-value.positive,.fund-value .positive{color:var(--good)}
+.fund-value.negative,.fund-value .negative{color:var(--bad)}
+.fund-value.neutral{color:#e0e9fa}
+.fund-peer{display:block;color:#a6b5cc;font-size:10px;font-weight:500;line-height:1.45;margin-top:2px}
+.fund-symbol{text-align:center;font-size:19px;font-weight:900}
+.fund-symbol.positive{color:var(--good)}
+.fund-symbol.negative{color:var(--bad)}
+.fund-symbol.neutral{color:#cbd7e9}
+.fund-explain{font-size:10px;line-height:1.65;color:#aebed5;margin-top:9px}
+.fund-compact{font-size:11px;margin-top:7px;color:#b8c9e3;line-height:1.6}
+.fund-compact b{font-size:14px}
+.fund-compact .positive{color:var(--good)}
+.fund-compact .negative{color:var(--bad)}
+.fund-compact .neutral{color:#d0d9e9}
+@media(max-width:460px){.fund-row{grid-template-columns:minmax(68px,1fr) minmax(106px,2fr) 28px;padding:7px}.fund-name{font-size:10px}.fund-value{font-size:12px}}
 </style></head><body><div class="wrap">
 <div class="hero">
 <h1>Invest Pilot <span class="badge">iPhone</span></h1>
@@ -146,7 +172,7 @@
 </div>
 <div class="card">
   <div class="section-head"><h2 id="rankingTitle">国内株 総合ランキング TOP100</h2><span class="count-label" id="shownCount">0件</span></div>
-  <div class="simple-note"><b>これは何の順位？</b><br>解析できる国内上場株を、過去20・60・120・250日の値動き、上昇トレンド、売買代金を同じ基準で採点し、総合点が高い順に並べた順位です。売上成長・利益成長・ROE・営業利益率・PERは「業績参考」として別表示し、現在の順位には混ぜていません。<br><br><b>評価の見方</b><br>🚀積極買い → 🟢買い候補 → 🟡押し目待ち → 🔵監視 → 🔴見送り → ⛔積極売り。点数は将来の上昇率そのものではありません。<br><b>前営業日比</b>は直近の取引日終値との比較です（リアルタイム株価ではありません）。半導体条件で絞っても、銘柄番号は全市場の順位を維持します。</div>
+  <div class="simple-note"><b>これは何の順位？</b><br>解析できる国内上場株を、過去20・60・120・250日の値動き、上昇トレンド、売買代金を同じ基準で採点し、総合点が高い順に並べた順位です。売上成長・利益成長・ROE・営業利益率・PERは「業績参考」として別表示し、現在の順位には混ぜていません。業績参考では、同業種で比較できる企業の平均と比べて✕・△・－・○・◎・⭐で表示します。<br><br><b>評価の見方</b><br>🚀積極買い → 🟢買い候補 → 🟡押し目待ち → 🔵監視 → 🔴見送り → ⛔積極売り。点数は将来の上昇率そのものではありません。<br><b>前営業日比</b>は直近の取引日終値との比較です（リアルタイム株価ではありません）。半導体条件で絞っても、銘柄番号は全市場の順位を維持します。</div>
   <div class="quote-guide"><strong>前営業日比の見方</strong><br><span class="quote-positive">＋350円（＋1.03%）</span>なら前の取引日より350円上昇、<span class="quote-negative">−200円（−0.8%）</span>なら200円下落。<br>銘柄をタップすると、株価と<strong>直近10営業日の推移</strong>を確認できます。「価格帯と購入可能株数」は設定した運用資金からの試算です。</div>
   <div id="stockCards" class="stock-list" style="margin-top:10px"></div>
   <button class="btn secondary full" id="moreBtn" style="margin-top:10px">次の20件を見る</button>
@@ -173,7 +199,7 @@
 <section id="research" class="pane">
 <div class="card">
   <h2>銘柄を検索</h2>
-  <div class="small">証券コードでも会社名でも検索できます。検索すると、ランキング外でも総合順位・点数・現在の評価・理由を表示。前営業日比と直近10営業日の株価推移も確認できます。業績参考は取得できた銘柄に表示します。</div>
+  <div class="small">証券コードでも会社名でも検索できます。検索すると、ランキング外でも総合順位・点数・現在の評価・理由を表示。前営業日比と直近10営業日の株価推移も確認できます。業績参考は取得できた銘柄に表示します。括弧内の数値は、取得できた同業他社の参考平均です。</div>
   <label>証券コード または 会社名</label>
   <div class="search-wrap">
     <input id="researchQuery" autocomplete="off" placeholder="例：6857 / アドバンテスト">
@@ -198,4 +224,4 @@
 <div class="card"><div id="researchResults"></div></div>
 </section>
 <section id="settings" class="pane"><div class="card install"><h2>ホーム画面に追加</h2><div class="small only-browser">Safariの共有ボタン →「ホーム画面に追加」。HTTPSで公開した場合はPWAとして起動できます。</div><div class="small">通常の全銘柄解析はGitHub Actions側で実行し、iPhoneは結果を表示します。</div></div><div class="card"><h2>データ</h2><div class="small">通常は自動更新されるため操作不要です。</div><details class="details-box"><summary>詳細設定を開く</summary><div class="switchline"><div><b>起動時の日次自動更新</b><div class="small">前回同期から24時間以上なら、アプリを開いた時に更新。</div></div><button id="autoToggle" class="switch on" aria-label="自動更新"></button></div><label>価格データ公開ページ</label><input id="sourcePage" class="mono" value="https://softhompo.a.la9.jp/Data/StockData.html"><label>CORSリレー</label><select id="relayMode"><option value="auto">自動（推奨）</option><option value="direct">直接のみ</option><option value="allorigins">AllOrigins</option><option value="corsproxy">corsproxy.io</option><option value="isomorphic">isomorphic-git</option></select><div class="small" style="margin-top:7px">リレーには公開株価URLだけを渡します。証券会社ID・パスワード・APIキーは入力しない設計です。</div><div class="btnrow"><button class="btn secondary" id="clearCacheBtn">保存データ削除</button><button class="btn ghost" id="exportBtn">ランキング書出し</button></div></div></details></div><div class="card"><h2>半導体テーマ</h2><div class="small">半導体本体だけでなく、製造装置・検査・材料/部品を広義に含みます。追加コードはカンマ区切り。</div><label>追加コード</label><input id="semiExtra" placeholder="例: 9999,8888"><label>除外コード</label><input id="semiExclude" placeholder="例: 1234"><button class="btn secondary full" id="saveThemeBtn" style="margin-top:10px">テーマ設定を保存</button></div><div class="card"><h2>制約</h2><div class="small">ランキング・ニュース・過去履歴はクラウド側で定期更新します。iPhoneは結果を先読みして表示し、過去成績の計算だけ端末内で行います。</div></div></section>
-</div><script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script src="core.js"></script><script src="signals.js"></script><script src="ui.js"></script></body></html>
+</div><script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script><script src="core.js"></script><script src="signals.js"></script><script src="industry.js"></script><script src="ui.js"></script></body></html>
