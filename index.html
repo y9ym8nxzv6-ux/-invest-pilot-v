@@ -65,6 +65,21 @@
 .plan-note{color:var(--muted);font-size:10px;line-height:1.6;margin-top:7px}
 .quote-guide{margin-top:10px;padding:10px 12px;border-radius:12px;background:#10223a;border:1px solid #35527e;font-size:11px;line-height:1.75;color:#d4e3f8}
 .quote-guide strong{font-weight:800}
+
+.basket-head{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.basket-head h2{margin:0}
+.basket-tag{color:#bdd1ef;background:#1d3154;border:1px solid #365586;border-radius:20px;padding:5px 10px;font-size:11px}
+.basket-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px}
+.basket-metric{background:#10243c;border-radius:12px;padding:11px}
+.basket-metric .k{font-size:10px;color:var(--muted)}
+.basket-metric .v{font-size:17px;font-weight:850;margin-top:4px}
+.basket-item{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #284061}
+.basket-item strong{font-size:13px}.basket-item .basket-sub{font-size:11px;color:var(--muted);line-height:1.55;margin-top:4px}
+.basket-item .basket-cost{text-align:right;font-size:14px;font-weight:800}
+.basket-advice{border:1px solid #496387;border-radius:13px;background:#10213a;padding:11px;margin-top:11px}
+.basket-advice strong{display:block;font-size:13px}.basket-advice p{font-size:11px;line-height:1.7;color:#c5d7f3;margin:6px 0 0}
+.basket-note{font-size:10px;color:var(--muted);margin-top:8px;line-height:1.6}
+@media(max-width:480px){.basket-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style></head><body><div class="wrap">
 <div class="hero">
 <h1>Invest Pilot <span class="badge">iPhone</span></h1>
@@ -110,12 +125,24 @@
 <div class="card">
   <div class="section-head"><h2>表示条件</h2><span class="count-label">変更するとすぐ反映</span></div>
   <div class="controls">
-    <div><label>運用資金</label><input id="capital" type="number" min="10000" step="10000" value="100000"></div>
+    <div><label>運用資金</label><input id="capital" type="number" min="10000" step="10000" value="200000"></div>
     <div><label>1銘柄への資金配分</label><select id="risk"><option value="low">控えめ</option><option value="mid" selected>標準</option><option value="high">積極的</option></select></div>
     <div><label>半導体をどうする？</label><select id="semiMode"><option value="all">含める</option><option value="exclude">除外する</option><option value="only">半導体だけ見る</option></select></div>
     <div><label>購入単位</label><select id="lotMode"><option value="1">1株ずつ</option><option value="100">100株単位</option></select></div>
   </div>
   <div class="btnrow"><button class="btn" id="syncBtn">最新データを読み込む</button><button class="btn secondary" id="recalcBtn">条件を反映</button></div>
+</div>
+<div class="card" id="fiveStockCard">
+  <div class="basket-head"><h2>最大5銘柄の購入シミュレーション</h2><span class="basket-tag">無理に5社にしない</span></div>
+  <div class="small" style="margin-top:8px">今の運用資金・売買単位・モメンタム判定を使って、買える株数と合計必要額を試算します。同業種に偏るときや、条件を満たす候補が少ないときは現金を残します。</div>
+  <div id="basketStatus" class="basket-advice" aria-live="polite"><strong>購入候補を確認しています…</strong><p>最新の株価データを読み込むと自動計算します。</p></div>
+  <div class="basket-grid" id="basketSummary">
+    <div class="basket-metric"><div class="k">対象数</div><div class="v">—</div></div>
+    <div class="basket-metric"><div class="k">購入試算額</div><div class="v">—</div></div>
+    <div class="basket-metric"><div class="k">残す現金</div><div class="v">—</div></div>
+  </div>
+  <div id="basketList" style="margin-top:8px"></div>
+  <div class="basket-note">この組み合わせは投資判断の代行ではなく、条件に合う銘柄の機械的な資金配分試算です。業種分散だけで株価の連動性を測れるわけではありません。</div>
 </div>
 <div class="card">
   <div class="section-head"><h2 id="rankingTitle">国内株 総合ランキング TOP100</h2><span class="count-label" id="shownCount">0件</span></div>
@@ -142,7 +169,7 @@
   <div class="big" id="strategyAutoTitle">おすすめの見直し間隔を計算中…</div>
   <div class="meta" id="strategyAutoMeta">10・20・40・60・100営業日を複数期間で比較して、利益だけでなく最大下落と安定性も見ています。</div>
   <div id="strategyAutoTable"></div>
-</div><div class="controls"><div><label>対象</label><select id="btSemi"><option value="all">半導体を含む</option><option value="exclude">半導体を除く</option><option value="only">半導体だけ</option></select></div><div><label>開始資金</label><input id="btCapital" type="number" min="10000" step="10000" value="100000"></div><div><label>売買単位</label><select id="btLot"><option value="1">1株</option><option value="100">100株</option></select></div><div><label>上位保有数</label><input id="btTop" type="number" min="3" max="30" value="10"></div><div><label>銘柄を見直す間隔</label><select id="btDays"><option value="auto" selected>自動（おすすめ）</option><option value="10">10営業日（約2週間）</option><option value="20">20営業日（約1か月）</option><option value="40">40営業日（約2か月）</option><option value="60">60営業日（約3か月）</option><option value="100">100営業日（約5か月）</option></select></div><div><label>片道コスト(bp)</label><input id="btCost" type="number" min="0" max="200" value="10"></div></div><div class="btnrow"><button class="btn" id="btRun">この条件で過去成績を見る</button><button class="btn secondary" id="btLoad24">クラウド履歴を再読込</button></div><div id="btMsg" class="msg">過去履歴はクラウドで事前作成済みです。通常は自動で先読みするので、取得操作は不要です。</div></div><div class="card"><div class="metrics" id="btMetrics"><div class="metric"><div class="k">累積</div><div class="v">--</div></div><div class="metric"><div class="k">最終資金</div><div class="v">--</div></div><div class="metric"><div class="k">最大DD</div><div class="v">--</div></div><div class="metric"><div class="k">期間数</div><div class="v">--</div></div></div><canvas id="btChart" width="780" height="260" style="margin-top:12px"></canvas><div id="btCompareTable" class="tablewrap" style="margin-top:10px"></div></div></section>
+</div><div class="controls"><div><label>対象</label><select id="btSemi"><option value="all">半導体を含む</option><option value="exclude">半導体を除く</option><option value="only">半導体だけ</option></select></div><div><label>開始資金</label><input id="btCapital" type="number" min="10000" step="10000" value="100000"></div><div><label>売買単位</label><select id="btLot"><option value="1">1株</option><option value="100">100株</option></select></div><div><label>上位保有数</label><input id="btTop" type="number" min="1" max="30" value="5"></div><div><label>銘柄を見直す間隔</label><select id="btDays"><option value="auto" selected>自動（おすすめ）</option><option value="10">10営業日（約2週間）</option><option value="20">20営業日（約1か月）</option><option value="40">40営業日（約2か月）</option><option value="60">60営業日（約3か月）</option><option value="100">100営業日（約5か月）</option></select></div><div><label>片道コスト(bp)</label><input id="btCost" type="number" min="0" max="200" value="10"></div></div><div class="btnrow"><button class="btn" id="btRun">この条件で過去成績を見る</button><button class="btn secondary" id="btLoad24">クラウド履歴を再読込</button></div><div id="btMsg" class="msg">過去履歴はクラウドで事前作成済みです。通常は自動で先読みするので、取得操作は不要です。</div></div><div class="card"><div class="metrics" id="btMetrics"><div class="metric"><div class="k">累積</div><div class="v">--</div></div><div class="metric"><div class="k">最終資金</div><div class="v">--</div></div><div class="metric"><div class="k">最大DD</div><div class="v">--</div></div><div class="metric"><div class="k">期間数</div><div class="v">--</div></div></div><canvas id="btChart" width="780" height="260" style="margin-top:12px"></canvas><div id="btCompareTable" class="tablewrap" style="margin-top:10px"></div></div></section>
 <section id="research" class="pane">
 <div class="card">
   <h2>銘柄を検索</h2>
