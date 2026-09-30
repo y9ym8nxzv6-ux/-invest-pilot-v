@@ -7,6 +7,7 @@ if(typeof document!=='undefined'){
     get theme(){return {extra:(localStorage.getItem('ip7_semi_extra')||'').split(',').map(x=>x.trim()).filter(Boolean),exclude:(localStorage.getItem('ip7_semi_exclude')||'').split(',').map(x=>x.trim()).filter(Boolean)}}
   };
   const hasNumber=n=>n!==null&&n!==undefined&&n!==''&&Number.isFinite(Number(n)); const yen=n=>hasNumber(n)?Math.round(Number(n)).toLocaleString('ja-JP')+'円':'—'; const pct=n=>hasNumber(n)?(Number(n)*100).toFixed(1)+'%':'—'; const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const safeHref=value=>{try{const u=new URL(String(value||''),'https://duckduckgo.com');return ['https:','http:'].includes(u.protocol)?u.href:'#'}catch{return '#'}};
   const researchJobs=new Map();
   let researchWorker=null;
   const normSearch=s=>String(s||'').normalize('NFKC').toLowerCase().replace(/\s+/g,'').trim();
@@ -373,8 +374,8 @@ if(typeof document!=='undefined'){
   }
   function renderResearchResult(d,sourceLabel='調査結果'){
     const n=normalizeResearch(d),ev=materialEvaluation(n.score);
-    $('researchSummary').innerHTML=`<b class="${ev.cls}">${ev.label}</b>　材料スコア <b class="${n.score>3?'good':n.score<-3?'bad':'warn'}">${n.score>0?'+':''}${n.score}</b><br><span class="small">${esc(sourceLabel)} · プラス: ${esc(n.positive.join('・')||'なし')} / 注意: ${esc(n.negative.join('・')||'なし')}</span>`;
-    $('researchResults').innerHTML=n.results.length?n.results.map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(x.url||'#')}">${esc(x.title||'')}</a><div class="meta">${esc(x.published||'')}</div></div>`).join(''):'<div class="small">関連ニュースはまだ取得できていません。</div>';
+    $('researchSummary').innerHTML=n.results.length?`<b class="${ev.cls}">${ev.label}</b>　材料スコア <b class="${n.score>3?'good':n.score<-3?'bad':'warn'}">${n.score>0?'+':''}${n.score}</b><br><span class="small">${esc(sourceLabel)} · プラス: ${esc(n.positive.join('・')||'なし')} / 注意: ${esc(n.negative.join('・')||'なし')} · ニュース見出しの語句による機械評価（決算原本未確認）</span>`:'<span class="small">関連ニュースが取得できないため、材料評価は未判定です。</span>';
+    $('researchResults').innerHTML=n.results.length?n.results.map(x=>`<div class="research-item"><a target="_blank" rel="noopener" href="${esc(safeHref(x.url))}">${esc(x.title||'')}</a><div class="meta">${esc(x.published||'')}</div></div>`).join(''):'<div class="small">関連ニュースはまだ取得できていません。</div>';
     $('liveResearchBtn').style.display=n.results.length?'none':'block';
   }
   async function liveResearch(){
@@ -409,8 +410,8 @@ if(typeof document!=='undefined'){
     return researchWorker;
   }
   function formatWait(sec){
-    sec=Math.max(0,Math.ceil(sec));
-    return sec>=60?`残り 約${Math.max(1,Math.ceil(sec/60))}分`:`残り ${sec}秒`;
+    sec=Math.max(0,sec);
+    return sec>60?`残り 約${Math.ceil(sec/60)}分`:`残り ${Math.ceil(sec)}秒`;
   }
   function startWait(label,estimatedSec){
     clearInterval(state.waitTimer);
@@ -539,7 +540,8 @@ if(typeof document!=='undefined'){
     if(!f)return compact?'<div class="stock-reason">業績参考：データ未取得</div>':'<div class="explain-box"><b>業績参考</b><br>この銘柄は定期取得対象外、または業績データ取得前です。総合順位には影響しません。</div>';
     const cls=fundamentalLabelClass(f.reference_key);
     const score=hasNumber(f.reference_score)?Number(f.reference_score).toFixed(0)+'点':'—';
-    if(compact)return '<div class="stock-reason">業績参考：<b class="'+cls+'">'+esc(f.reference_label||'—')+'</b> '+score+'（順位には不使用）</div>';
+    const cachedNote=f.is_cached?' · 前回取得値 '+quoteDate(String(f.last_success_at||'').slice(0,10)):'';
+    if(compact)return '<div class="stock-reason">業績参考：<b class="'+cls+'">'+esc(f.reference_label||'—')+'</b> '+score+esc(cachedNote)+'（順位には不使用）</div>';
     const cells=[
       ['売上成長',pct(f.revenueGrowth)],
       ['利益成長',pct(f.earningsGrowth)],
@@ -547,7 +549,7 @@ if(typeof document!=='undefined'){
       ['営業利益率',pct(f.operatingMargins)],
       ['PER',hasNumber(f.trailingPE)?Number(f.trailingPE).toFixed(1)+'倍':'—']
     ].map(x=>'<div class="analysis-cell"><div class="k">'+x[0]+'</div><div class="v">'+x[1]+'</div></div>').join('');
-    return '<div class="explain-box"><b>業績参考：<span class="'+cls+'">'+esc(f.reference_label||'—')+' '+score+'</span></b><br>モメンタム順位とは別枠の参考情報です。売上成長・利益成長・ROE・営業利益率・PERを見ています。</div><div class="analysis-grid">'+cells+'</div>';
+    return '<div class="explain-box"><b>業績参考：<span class="'+cls+'">'+esc(f.reference_label||'—')+' '+score+'</span></b><br>モメンタム順位とは別枠の参考情報です。売上成長・利益成長・ROE・営業利益率・PERを見ています。'+esc(cachedNote)+'。資料の対象期は銘柄や指標で異なることがあります。</div><div class="analysis-grid">'+cells+'</div>';
   }
   async function loadFundamentals(){
     if(state.fundamentals)return state.fundamentals;
@@ -617,12 +619,12 @@ if(typeof document!=='undefined'){
   function renderStatus(){const s=state.snapshot;$('asof').textContent=s?.asof?IPCore.dateIntToISO(s.asof):(s?.updatedAt?new Date(s.updatedAt).toLocaleString('ja-JP',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'読込前');$('scoreCount').textContent=(state.analysisUniverseCount||state.ranked?.length||0).toLocaleString('ja-JP');$('cacheState').textContent=s?'Cloud':'未同期';$('envState').textContent=navigator.standalone||matchMedia('(display-mode: standalone)').matches?'PWA':'Safari';renderDataHealth();}
   function forecastHtml(x){
     const f=x.forecast20;
-    if(!f)return '<div class="forecast-box"><div class="forecast-title">20営業日後の参考見込み</div><div class="forecast-meta">類似パターンを計算中／データ不足</div></div>';
+    if(!f)return '<div class="forecast-box"><div class="forecast-title">過去の類似局面（20営業日後の参考）</div><div class="forecast-meta">類似パターンを計算中／データ不足</div></div>';
     const rangeClass=Number(f.range_high)>=0?'good':'bad';
     return '<div class="forecast-box">'+
       '<div class="forecast-title">過去の類似局面：20営業日後の値動き（将来予測ではありません）</div>'+
       '<div class="forecast-main"><div class="forecast-range '+rangeClass+'">'+pct(f.range_low)+' 〜 '+pct(f.range_high)+'</div>'+
-      '<div class="forecast-up">類似例の上昇割合 '+Math.round((Number(f.up_rate)||0)*100)+'%</div></div>'+
+      '<div class="forecast-up">類似例の上昇割合 '+(hasNumber(f.up_rate)?Math.round(Number(f.up_rate)*100)+'%':'—')+'</div></div>'+
       '<div class="forecast-meta">中央値 '+pct(f.median)+' · 類似 '+esc(f.samples)+'例 · 参考度目安 '+esc(f.confidence||'—')+'</div></div>';
   }
   function currentRows(){
