@@ -122,6 +122,7 @@ if(typeof document!=='undefined'){
         <div class="head"><div><div class="title">#${esc(a.rank)} ${esc(a.company||master?.company||code)}</div><div class="sub">${esc(code)} · ${esc(a.sector33||a.market||'')}</div></div><button class="compare-remove" data-compare-remove="${esc(code)}">×</button></div>
         <div class="analysis-judge">${esc(sig.label)} · 総合点 ${Number(a.technical_score).toFixed(1)}</div>
         <div class="analysis-reason">${esc(sig.reason)}</div>
+        ${quoteStrip(code)}
         ${fundamentalHtml(code,true)}
         <div class="compare-grid">
           <div class="compare-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
@@ -226,6 +227,7 @@ if(typeof document!=='undefined'){
         <div class="signal-pill ${cls}">${sig.label}</div>
       </div>
       <div class="analysis-judge">総合点 ${Number(a.technical_score).toFixed(1)} / 100</div>
+      ${quoteFeature(a.code)}
       <div class="analysis-reason"><b>この評価の理由：</b> ${esc(sig.reason)}</div>
       <div class="analysis-grid">
         <div class="analysis-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
@@ -234,6 +236,7 @@ if(typeof document!=='undefined'){
         <div class="analysis-cell"><div class="k">過去250日</div><div class="v ${a.ret250>=0?'good':'bad'}">${pct(a.ret250)}</div></div>
         ${outlook}
       </div>
+      ${tenDayHistoryHtml(a.code)}
       ${fundamentalHtml(a.code,false)}
       <div class="explain-box"><b>総合点とは？</b><br>過去の値動き、上昇トレンド、売買代金を国内株で比較したモメンタム中心の相対評価です。業績参考は順位に入れていません。100点に近いほど現在の条件が強いことを示しますが、将来の上昇率を保証する点数ではありません。</div>`;
   }
@@ -297,7 +300,7 @@ if(typeof document!=='undefined'){
   function renderFavorites(){
     const fav=getFavorites();$('favoriteCount').textContent=fav.length;
     $('favoriteList').innerHTML=fav.length?fav.map(s=>`<div class="favorite-item">
-      <div class="favorite-open" data-fav-open="${esc(s.code)}"><div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')}</div></div>
+      <div class="favorite-open" data-fav-open="${esc(s.code)}"><div class="nm">${esc(s.company||s.code)}</div><div class="sub">${esc(s.code)} · ${esc(s.sector33||s.market||'')} · 前営業日比 <span class="${changeColor(quoteOf(s.code)?.change_pct)}">${signedPct(quoteOf(s.code)?.change_pct)}</span></div></div>
       <button class="favorite-remove" data-fav-remove="${esc(s.code)}" aria-label="削除">×</button>
     </div>`).join(''):'<div class="small">まだ登録されていません。</div>';
     document.querySelectorAll('[data-fav-open]').forEach(el=>el.onclick=()=>openStockByCode(el.dataset.favOpen));
@@ -340,7 +343,8 @@ if(typeof document!=='undefined'){
     if(!q){$('researchSummary').textContent='証券コードか会社名を入力してください。';return}
     try{
       await loadStockMaster();
-      const list=searchStocks(q,10);
+      const codeInInput=q.match(/^([0-9A-Z]{4})(?:\s|$)/i)?.[1];
+      const list=searchStocks(codeInInput||q,10);
       if(!list.length){$('researchSummary').textContent='該当する銘柄が見つかりません。';renderSearchSuggestions([]);return}
       const nq=normSearch(q);
       const exact=list.find(s=>normSearch(s.code)===nq||normSearch(s.company)===nq);
@@ -534,14 +538,14 @@ if(typeof document!=='undefined'){
     const f=state.fundamentals&&state.fundamentals.get(String(code));
     if(!f)return compact?'<div class="stock-reason">業績参考：データ未取得</div>':'<div class="explain-box"><b>業績参考</b><br>この銘柄は定期取得対象外、または業績データ取得前です。総合順位には影響しません。</div>';
     const cls=fundamentalLabelClass(f.reference_key);
-    const score=Number.isFinite(Number(f.reference_score))?Number(f.reference_score).toFixed(0)+'点':'—';
+    const score=hasNumber(f.reference_score)?Number(f.reference_score).toFixed(0)+'点':'—';
     if(compact)return '<div class="stock-reason">業績参考：<b class="'+cls+'">'+esc(f.reference_label||'—')+'</b> '+score+'（順位には不使用）</div>';
     const cells=[
       ['売上成長',pct(f.revenueGrowth)],
       ['利益成長',pct(f.earningsGrowth)],
       ['ROE',pct(f.returnOnEquity)],
       ['営業利益率',pct(f.operatingMargins)],
-      ['PER',Number.isFinite(Number(f.trailingPE))?Number(f.trailingPE).toFixed(1)+'倍':'—']
+      ['PER',hasNumber(f.trailingPE)?Number(f.trailingPE).toFixed(1)+'倍':'—']
     ].map(x=>'<div class="analysis-cell"><div class="k">'+x[0]+'</div><div class="v">'+x[1]+'</div></div>').join('');
     return '<div class="explain-box"><b>業績参考：<span class="'+cls+'">'+esc(f.reference_label||'—')+' '+score+'</span></b><br>モメンタム順位とは別枠の参考情報です。売上成長・利益成長・ROE・営業利益率・PERを見ています。</div><div class="analysis-grid">'+cells+'</div>';
   }
@@ -616,17 +620,21 @@ if(typeof document!=='undefined'){
     if(!f)return '<div class="forecast-box"><div class="forecast-title">20営業日後の参考見込み</div><div class="forecast-meta">類似パターンを計算中／データ不足</div></div>';
     const rangeClass=Number(f.range_high)>=0?'good':'bad';
     return '<div class="forecast-box">'+
-      '<div class="forecast-title">20営業日後の参考見込み（過去の類似局面）</div>'+
+      '<div class="forecast-title">過去の類似局面：20営業日後の値動き（将来予測ではありません）</div>'+
       '<div class="forecast-main"><div class="forecast-range '+rangeClass+'">'+pct(f.range_low)+' 〜 '+pct(f.range_high)+'</div>'+
-      '<div class="forecast-up">上昇割合 '+Math.round((Number(f.up_rate)||0)*100)+'%</div></div>'+
-      '<div class="forecast-meta">中央値 '+pct(f.median)+' · 類似 '+esc(f.samples)+'例 · 信頼度 '+esc(f.confidence||'—')+'</div></div>';
+      '<div class="forecast-up">類似例の上昇割合 '+Math.round((Number(f.up_rate)||0)*100)+'%</div></div>'+
+      '<div class="forecast-meta">中央値 '+pct(f.median)+' · 類似 '+esc(f.samples)+'例 · 参考度目安 '+esc(f.confidence||'—')+'</div></div>';
   }
   function currentRows(){
     const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;
-    return IPCore.decorateForCapital(state.ranked,capital,risk,lot,mode).slice(0,100);
+    const priced=state.dailyQuotes?state.ranked.map(x=>{const q=quoteOf(x.code);return q?{...x,close:q.close}:x}):state.ranked;
+    return IPCore.decorateForCapital(priced,capital,risk,lot,mode).slice(0,100);
   }
   function renderRows(resetVisible=false){
     if(resetVisible)state.visibleCount=20;
+    const mode=$('semiMode').value;
+    const heading=$('rankingTitle');
+    if(heading)heading.textContent=mode==='all'?'国内株 総合ランキング TOP100':mode==='only'?'半導体 上位候補（最大100件）':'半導体を除いた上位候補（最大100件）';
     const rows=currentRows();
     const withSig=rows.map(x=>({...x,_sig:(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(x):{key:'watch',label:'🔵 監視',reason:'条件確認中'}}));
     const counts={strongbuy:0,buy:0,wait:0,watch:0,avoid:0,strongsell:0};
@@ -650,10 +658,11 @@ if(typeof document!=='undefined'){
           <div class="signal-pill ${sigClass}">${sig.label}</div>
         </div>
         <div class="stock-main">
-          <div><div class="k">現在値</div><div class="v">${yen(x.close)}</div></div>
+          <div><div class="k">${quoteOf(x.code)?"直近の終値":"解析時の参考価格"}</div><div class="v">${moneyWithDecimals(x.close)}</div></div>
           <div><div class="k">総合点</div><div class="v">${(+x.technical_score).toFixed(1)}</div></div>
           <div><div class="k">目安株数</div><div class="v">${x.shares_by_budget>0?x.shares_by_budget+'株':'—'}</div></div>
         </div>
+        ${quoteStrip(x.code)}
         <div class="stock-reason">${esc(sig.reason)} · 目安枠 ${yen(x.budget_yen)}</div>
         ${fundamentalHtml(x.code,true)}
         ${forecastHtml(x)}
@@ -746,7 +755,7 @@ if(typeof document!=='undefined'){
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
-    $('syncBtn').onclick=()=>loadCloudSnapshot().catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();renderStrategyConfig();$('btDays').addEventListener('change',()=>localStorage.setItem('ip7_bt_days',$('btDays').value));
+    $('syncBtn').onclick=()=>loadCloudSnapshot().then(()=>loadDailyQuotes(true).catch(()=>{})).catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();renderStrategyConfig();$('btDays').addEventListener('change',()=>localStorage.setItem('ip7_bt_days',$('btDays').value));
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
