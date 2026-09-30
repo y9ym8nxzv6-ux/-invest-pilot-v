@@ -1,0 +1,52 @@
+name: Refresh daily stock prices
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/build_daily.py"
+      - ".github/workflows/daily-price.yml"
+  schedule:
+    - cron: "5 8 * * 1-5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: invest-pilot-daily-prices
+  cancel-in-progress: true
+
+jobs:
+  daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install data dependencies
+        run: pip install --disable-pip-version-check pandas yfinance
+      - name: Build daily prices and ten-session history
+        run: python scripts/build_daily.py
+      - name: Validate daily prices
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path('data/daily-changes.json').read_text(encoding='utf-8'))
+          assert d['count'] >= 2500, 'too few quotes'
+          assert all(len(v.get('daily_history',[]))<=10 for v in d['stocks'].values())
+          assert sum(len(v.get('daily_history',[]))>=8 for v in d['stocks'].values()) >= 2000
+          print('Daily price validation PASS',d['count'])
+          PY
+      - name: Commit updated prices
+        run: |
+          git config user.name "Invest Pilot Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/daily-changes.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Refresh daily stock quotes"
+          git pull --rebase origin main
+          git push
