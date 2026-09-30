@@ -1,5 +1,5 @@
 if(typeof document!=='undefined'){
-  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null,fundamentals:null,fundamentalsPromise:null,dailyQuotes:null,dailyPromise:null,dailyUpdatedAt:null};
+  const $=id=>document.getElementById(id); const state={priceMap:null,ranked:IPCore.DEMO.slice(),snapshot:null,months:0,actions:[],busy:false,cloudResearch:null,visibleCount:20,waitTimer:null,waitShowTimer:null,waitEnd:0,signalFilter:'all',researchPromise:null,historyPromise:null,stockMaster:null,stockMasterPromise:null,selectedStock:null,allAnalysis:null,allAnalysisPromise:null,analysisUniverseCount:0,compareCodes:[],strategyConfig:null,strategyConfigPromise:null,fundamentals:null,fundamentalsPromise:null,dailyQuotes:null,dailyPromise:null,dailyUpdatedAt:null,dailyError:false};
   const settings={
     get auto(){return localStorage.getItem('ip7_auto')!=='0'}, set auto(v){localStorage.setItem('ip7_auto',v?'1':'0')},
     get source(){return localStorage.getItem('ip7_source')||'https://softhompo.a.la9.jp/Data/StockData.html'}, set source(v){localStorage.setItem('ip7_source',v)},
@@ -80,13 +80,13 @@ if(typeof document!=='undefined'){
       if(!r.ok)throw new Error('前営業日比データ未生成');
       const d=await r.json(),map=new Map(Object.entries(d.stocks||{}));
       if(map.size<2500)throw new Error('前営業日比データの件数不足');
-      state.dailyQuotes=map;state.dailyUpdatedAt=d.generated_at||null;
+      state.dailyQuotes=map;state.dailyUpdatedAt=d.generated_at||null;state.dailyError=false;
       showDailyStatus();renderRows();
       if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
       renderCompare().catch(()=>{});renderFavorites();
       return map;
     })();
-    try{return await state.dailyPromise}finally{state.dailyPromise=null}
+    try{return await state.dailyPromise}catch(e){state.dailyError=true;renderFiveStockBasket();throw e}finally{state.dailyPromise=null}
   }
 
   function formatAge(ts){
@@ -677,7 +677,7 @@ if(typeof document!=='undefined'){
       list.innerHTML='';return;
     }
     if(!state.dailyQuotes){
-      status.innerHTML='<strong>終値データを確認中</strong><p>購入株数の試算は直近終値を使います。株価が読み込めていない間は、株数を出しません。</p>';
+      status.innerHTML=state.dailyError?'<strong>株価を取得できません</strong><p>誤った株数を出さないよう、購入シミュレーションを停止しています。「最新データを読み込む」から再取得してください。</p>':'<strong>終値データを確認中</strong><p>購入株数の試算は直近終値を使います。株価が読み込めていない間は、株数を出しません。</p>';
       list.innerHTML='';return;
     }
     const mode=$('semiMode').value;
