@@ -152,6 +152,79 @@ const IPCore = (() => {
       within_budget:shares>0&&total<=budget+1e-5
     };
   }
+  // Illustration of a small position-limited basket; no brokerage orders.
+  // Eligible is supplied by the live UI signal classifier.
+  function buildFiveStockPlan(stocks,{capital=200000,risk='mid',lot=1,reserve=.10,maxPositions=5,scoreGap=10}={}){
+    const money=Math.max(0,Number(capital)||0);
+    const unit=Math.max(1,Math.floor(Number(lot)||1));
+    const limit=Math.max(1,Math.min(5,Math.floor(Number(maxPositions)||5)));
+    const reservePct=Math.min(.8,Math.max(0,Number(reserve)||0));
+    const maxEach=money*singleLimitPct(money,risk)/100;
+    const slot=Math.min(maxEach,money*(1-reservePct)/limit);
+    const qualifying=(Array.isArray(stocks)?stocks:[])
+      .filter(x=>x&&x.eligible===true&&Number(x.technical_score)>=80&&Number(x.trend_count)>=3)
+      .filter(x=>Number(x.close)>0)
+      .sort((a,b)=>Number(b.technical_score)-Number(a.technical_score));
+    const benchmarkScore=qualifying.length?Number(qualifying[0].technical_score):0;
+    const candidates=qualifying.filter(x=>benchmarkScore-Number(x.technical_score)<=Math.max(0,Number(scoreGap)||0));
+    const selection=[],themes=new Map(),seen=new Set();
+    let expensive=0,duplicateTheme=0;
+    const maxThemeHoldings=2;
+    function theme(x){
+      return x.is_semiconductor?'半導体関連':(String(x.sector33||x.market||'業種不明').trim()||'業種不明');
+    }
+    function add(x,allowSecond){
+      if(selection.length>=limit)return;
+      const code=String(x.code);
+      if(seen.has(code))return;
+      const tag=theme(x),held=themes.get(tag)||0;
+      if(held>=(allowSecond?maxThemeHoldings:1)){
+        duplicateTheme++;return;
+      }
+      const minimum=Number(x.close)*unit;
+      if(minimum>slot+1e-5){expensive++;return;}
+      const count=Math.floor((slot+1e-5)/minimum)*unit;
+      if(count<unit)return;
+      const value=Math.round(count*Number(x.close)*100)/100;
+      if(value>money*(1-reservePct)-selection.reduce((v,p)=>v+p.estimated_total,0)+1e-5)return;
+      selection.push({
+        code,company:x.company||code,rank:x.rank,sector33:x.sector33||'',
+        theme:tag,signal:x.signal||'',
+        technical_score:Number(x.technical_score),price:Number(x.close),
+        shares:count,estimated_total:value,one_stock_limit:slot
+      });
+      themes.set(tag,held+1);seen.add(code);
+    }
+    for(const x of candidates)add(x,false);
+    if(selection.length<limit){
+      for(const x of candidates)add(x,true);
+    }
+    const committed=selection.reduce((v,x)=>v+x.estimated_total,0);
+    const remaining=Math.max(0,Math.round((money-committed)*100)/100);
+    const uniqueThemes=new Set(selection.map(x=>x.theme)).size;
+    const concentration=selection.length>0?Math.max(...[...themes.values()])/selection.length:0;
+    const diversified=uniqueThemes>=3&&concentration<=.4;
+    let status,reason;
+    if(!selection.length){
+      status='条件を満たす購入候補なし';
+      reason='現在の買い判定・価格・予算枠では、組み合わせられる銘柄がありません。数を合わせて購入せず、候補の再確認や現金保有を検討する条件です。';
+    }else if(selection.length<limit){
+      status=selection.length+'銘柄の試算にとどめる';
+      reason='5銘柄に増やすために評価基準や予算上限を緩めていません。残りを無理に買い付けない案です。';
+    }else if(!diversified){
+      status='5銘柄でも値動きの偏りに注意';
+      reason='複数銘柄でも業種・テーマが重なっています。銘柄数だけでは分散にならないため、同時下落のリスクを確認してください。';
+    }else{
+      status='異なる業種に分けた5銘柄の試算';
+      reason='買い判定を維持し、1銘柄上限と業種の重複を考慮しました。ただし値動きの相関まで保証する分析ではありません。';
+    }
+    return {positions:selection,count:selection.length,max_positions:limit,
+      capital:money,committed,remaining,reserve:money*reservePct,slot,unique_themes:uniqueThemes,
+      concentration,diversified,status,reason,qualifying_count:qualifying.length,
+      considered_count:candidates.length,expensive_skipped:expensive,
+      overlapping_sector_skipped:duplicateTheme,
+      note:'機械的な買い候補の試算です。購入の指示ではありません。株価は直近終値で、手数料・売買時の値動きは含みません。'};
+  }
   function maxDrawdown(vals){let peak=-Infinity,mdd=0;for(const v of vals){peak=Math.max(peak,v);if(peak>0)mdd=Math.min(mdd,v/peak-1)}return mdd}
   function runBacktest(priceMap,{mode='all',capital=100000,risk='mid',lot=1,topN=10,rebalanceDays=20,costBps=10,reserve=.10,theme={}}={}){
     const dates=[...new Set([...priceMap.values()].flatMap(x=>x.points.map(p=>p[0])))].sort((a,b)=>a-b); if(dates.length<275)throw new Error('履歴が短すぎます。24か月履歴を取得してください。');
@@ -164,7 +237,7 @@ const IPCore = (() => {
   }
   function classifyText(text){let score=0,pos=[],neg=[];for(const [k,v] of Object.entries(POS_TERMS))if(text.includes(k)){score+=v;pos.push(k)}for(const [k,v] of Object.entries(NEG_TERMS))if(text.includes(k)){score+=v;neg.push(k)}return {score:Math.max(-18,Math.min(18,score)),positive:[...new Set(pos)],negative:[...new Set(neg)]};}
   async function parseArchiveBuffer(buffer,link,isSplit=false,ZipImpl=globalThis.JSZip){ if(!ZipImpl)throw new Error('JSZip unavailable'); const u8=new Uint8Array(buffer); const out=[]; if(u8[0]===0x50&&u8[1]===0x4b){ const zip=await ZipImpl.loadAsync(buffer); const names=Object.keys(zip.files).filter(n=>!zip.files[n].dir&&/\.(csv|txt)$/i.test(n)).sort(); for(const name of names){ const bytes=await zip.files[name].async('uint8array'); const text=decodeBytes(bytes); const def=inferDateFromName(name,link?.kind==='day'?parseDateInt(link.key):null); out.push(...(isSplit?parseSplitDelimitedText(text,(link?.url||'')+'#'+name):parseDelimitedText(text,def,(link?.url||'')+'#'+name))); } } else { const text=decodeBytes(u8),def=inferDateFromName(link?.label||'',link?.kind==='day'?parseDateInt(link.key):null); out.push(...(isSplit?parseSplitDelimitedText(text,link?.url||''):parseDelimitedText(text,def,link?.url||''))); } return out; }
-  return {POS_TERMS,NEG_TERMS,SEMI_BASE,DEMO,normText,cleanCode,num,htmlDecode,stripTags,parseJpDateLabel,parseDateInt,dateIntToISO,inferDateFromName,discoverLinks,selectPriceLinks,selectSplitLinks,parseRatioText,parseCSVLine,decodeBytes,parseDelimitedText,parseSplitDelimitedText,appendRows,normalizePriceMap,applyCorporateActions,semiconductorInfo,modeOK,scorePriceMap,rankMetrics,buildRawMetrics,singleLimitPct,budgetFor,decorateForCapital,buildPurchasePlan,runBacktest,classifyText,parseArchiveBuffer,upperBoundDate};
+  return {POS_TERMS,NEG_TERMS,SEMI_BASE,DEMO,normText,cleanCode,num,htmlDecode,stripTags,parseJpDateLabel,parseDateInt,dateIntToISO,inferDateFromName,discoverLinks,selectPriceLinks,selectSplitLinks,parseRatioText,parseCSVLine,decodeBytes,parseDelimitedText,parseSplitDelimitedText,appendRows,normalizePriceMap,applyCorporateActions,semiconductorInfo,modeOK,scorePriceMap,rankMetrics,buildRawMetrics,singleLimitPct,budgetFor,decorateForCapital,buildPurchasePlan,buildFiveStockPlan,runBacktest,classifyText,parseArchiveBuffer,upperBoundDate};
 })();
 if(typeof globalThis!=='undefined')globalThis.IPCore=IPCore;
 
