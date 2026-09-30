@@ -73,8 +73,8 @@
 .basket-metric{background:#10243c;border-radius:12px;padding:11px}
 .basket-metric .k{font-size:10px;color:var(--muted)}
 .basket-metric .v{font-size:17px;font-weight:850;margin-top:4px}
-.basket-item{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #284061}
-.basket-item strong{font-size:13px}.basket-item .basket-sub{font-size:11px;color:var(--muted);line-height:1.55;margin-top:4px}
+.basket-item{cursor:pointer;display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #284061}
+.basket-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.basket-item strong{font-size:13px}.basket-item .basket-sub{font-size:11px;color:var(--muted);line-height:1.55;margin-top:4px}
 .basket-item .basket-cost{text-align:right;font-size:14px;font-weight:800}
 .basket-advice{border:1px solid #496387;border-radius:13px;background:#10213a;padding:11px;margin-top:11px}
 .basket-advice strong{display:block;font-size:13px}.basket-advice p{font-size:11px;line-height:1.7;color:#c5d7f3;margin:6px 0 0}
@@ -134,7 +134,7 @@
 </div>
 <div class="card" id="fiveStockCard">
   <div class="basket-head"><h2>最大5銘柄の購入シミュレーション</h2><span class="basket-tag">無理に5社にしない</span></div>
-  <div class="small" style="margin-top:8px">今の運用資金・売買単位・モメンタム判定を使って、買える株数と合計必要額を試算します。同業種に偏るときや、条件を満たす候補が少ないときは現金を残します。</div>
+  <div class="small" style="margin-top:8px">国内株の総合ランキング上位500候補から、今の運用資金・売買単位・モメンタム判定を使って試算します。同業種に偏るときや、条件を満たす候補が少ないときは現金を残します。銘柄をタップすると詳しい分析が見られます。</div>
   <div id="basketStatus" class="basket-advice" aria-live="polite"><strong>購入候補を確認しています…</strong><p>最新の株価データを読み込むと自動計算します。</p></div>
   <div class="basket-grid" id="basketSummary">
     <div class="basket-metric"><div class="k">対象数</div><div class="v">—</div></div>
