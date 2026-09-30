@@ -106,9 +106,16 @@
 .fund-compact .negative{color:var(--bad)}
 .fund-compact .neutral{color:#d0d9e9}
 @media(max-width:460px){.fund-row{grid-template-columns:minmax(68px,1fr) minmax(106px,2fr) 28px;padding:7px}.fund-name{font-size:10px}.fund-value{font-size:12px}}
+
+.app-update{position:sticky;top:8px;z-index:20;padding:14px;background:#193857;border:1px solid #72adfa;border-radius:16px;box-shadow:0 8px 28px #0006;font-size:13px}.app-update[hidden]{display:none}.app-update button{display:block;width:100%;margin-top:8px;padding:10px;border:0;border-radius:9px;background:#91b8ff;color:#071629;font-weight:800}
+.fund-summary{padding:18px;border-radius:20px;background:linear-gradient(145deg,#142943,#0c192e);margin-top:18px}
+.fund-heading{font-size:16px;align-items:flex-start}.fund-tag{font-size:13px;white-space:normal}.fund-table{gap:8px}.fund-name{font-size:13px}.fund-value{font-size:20px}.fund-peer{font-size:12px}.fund-row{padding:13px 10px;grid-template-columns:minmax(60px,1fr) minmax(120px,2fr) 27px}.fund-symbol{font-size:23px}.fund-explain{font-size:12px;line-height:1.8}
+.fund-takeaways{display:grid;gap:8px;margin-top:16px}.fund-takeaways>div{display:grid;grid-template-columns:100px 1fr;gap:8px;font-size:12px;line-height:1.7;padding:10px;border-left:3px solid #69b8a3;background:#ffffff05}.fund-takeaways>div+div{border-color:#d8b77b}.fund-takeaways span{color:#d2def0}.fund-legend{font-size:12px;line-height:1.9;color:#c6d3e6;margin-top:14px}.fund-method{margin-top:14px;border-top:1px solid #334761;padding-top:12px}.fund-method summary{cursor:pointer;font-size:12px;color:#a9c6ee;min-height:28px}.fund-empty{padding:12px;margin-top:12px;font-size:13px;line-height:1.8;background:#ffffff08;border-radius:10px}
+@media(max-width:460px){.fund-summary{padding:13px}.fund-row{grid-template-columns:minmax(56px,1fr) minmax(115px,2fr) 24px;padding:11px 8px;gap:5px}.fund-name{font-size:12px}.fund-value{font-size:18px}.fund-peer{font-size:11px}.fund-takeaways>div{grid-template-columns:85px 1fr}}
 </style></head><body><div class="wrap">
+<div id="appUpdate" class="app-update" hidden>新しい画面の準備ができました。<button id="appReload" type="button">最新版を表示</button></div>
 <div class="hero">
-<h1>Invest Pilot <span class="badge">iPhone</span></h1>
+<h1>Invest Pilot <span class="badge">2026.09.30 · R16</span></h1>
 <div class="muted">国内株を同じ基準で比較し、「今どの銘柄を見ればいいか」を分かりやすく整理します。</div>
 <div class="summary3" id="signalFilters">
   <div class="summarybox filterbox active" data-signal="all"><div class="t">すべて</div><div class="n" id="allCount">--</div></div>

@@ -1,5 +1,5 @@
-const CACHE='invest-pilot-app-v15';
-const DATA_CACHE='invest-pilot-data-v15';
+const CACHE='invest-pilot-app-v16';
+const DATA_CACHE='invest-pilot-data-v16';
 const ASSETS=['./','./index.html','./core.js','./signals.js','./industry.js','./ui.js','./research-worker.js','./manifest.webmanifest'];
 const DATA_FILES=['latest-ranking.json','all-analysis.json','stock-master.json','research.json','backtest-history.json','strategy-config.json','fundamentals.json','daily-changes.json'];
 
@@ -43,13 +43,20 @@ self.addEventListener('fetch',event=>{
   }
 
   if(url.origin===self.location.origin){
-    event.respondWith(
-      caches.match(event.request,{ignoreSearch:true})
-        .then(cached=>cached||fetch(event.request).then(response=>{
-          if(response&&response.ok)caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));
-          return response;
-        }))
-    );
+    // Revalidate the app shell so an old offline cache cannot hide a release.
+    event.respondWith((async()=>{
+      const cache=await caches.open(CACHE);
+      try{
+        const response=await fetch(event.request,{cache:'no-cache'});
+        if(!response.ok)throw new Error('App request failed');
+        await cache.put(event.request,response.clone());
+        return response;
+      }catch(error){
+        const cached=await cache.match(event.request,{ignoreSearch:true});
+        if(cached)return cached;
+        throw error;
+      }
+    })());
     return;
   }
 

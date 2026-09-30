@@ -605,7 +605,7 @@ if(typeof document!=='undefined'){
         (cachedNote?'<br>'+esc(cachedNote):'')+'</div>';
     }
     const byKey=new Map((g.metrics||[]).map(x=>[x.metric,x]));
-    const lines=(IPIndustry?.METRICS||[]).map(m=>{
+    const lines=(globalThis.IPIndustry?.METRICS||[]).map(m=>{
       const x=byKey.get(m.key);
       const selfValue=hasNumber(f[m.key])?(m.unit==='倍'?Number(f[m.key]).toFixed(1)+'倍':pct(f[m.key])):'—';
       const value=x?.comparable
@@ -618,16 +618,23 @@ if(typeof document!=='undefined'){
         '<span class="fund-symbol '+esc(x?.kind||'neutral')+'" title="'+esc(x?.grade||'比較対象不足')+'">'+esc(x?.symbol||'－')+'</span></div>';
     }).join('');
     const resultCount=(g.metrics||[]).filter(x=>x.comparable).length;
+    const metricNames=Object.fromEntries((globalThis.IPIndustry?.METRICS||[]).map(m=>[m.key,m.label]));
+    const strengths=(g.metrics||[]).filter(x=>x.comparable&&x.points>0).map(x=>metricNames[x.metric]);
+    const weaknesses=(g.metrics||[]).filter(x=>x.comparable&&x.points<0).map(x=>metricNames[x.metric]);
+    const takeaways='<div class="fund-takeaways"><div><b>強み</b><span>'+esc(strengths.join('・')||'明確な優位は未確認')+'</span></div><div><b>確認したい点</b><span>'+esc(weaknesses.join('・')||'比較できた範囲では弱い指標なし')+'</span></div></div>';
     return '<section class="fund-summary" aria-label="同業種との業績比較">'+
       '<div class="fund-heading"><span>業績の同業比較</span><span class="fund-tag '+esc(g.kind)+'">'+symbol+'</span></div>'+
-      '<div class="fund-explain">'+esc(g.sector||'業種不明')+' · 比較できた指標 '+resultCount+'/5</div>'+
+      '<div class="fund-explain">'+esc(g.sector||'業種不明')+' · 比較できた指標 '+resultCount+'/5<br>比較範囲：取得済みTOP100内の同業他社</div>'+
+      (resultCount?takeaways:'<div class="fund-empty">比較できる同業他社が足りません。数値は確認できますが、優劣の判定は保留しています。</div>')+
       '<div class="fund-table">'+lines+'</div>'+
+      '<div class="fund-legend">✕ 弱い　△ やや弱い　－ 平均並み<br>○ やや強い　◎ 強い　⭐ 際立つ</div>'+
+      '<details class="fund-method"><summary>比較範囲・色・評価の見方</summary>'+
       '<div class="fund-explain">括弧内は、取得できたランキングTOP100内の同業他社の平均（自社を除く）。'+
       '東証の全業種平均ではありません。比較先が3社未満なら評価を保留します。'+
       '緑＝同業平均より上、赤＝下。ただしPERだけは低PERを緑、高PERを赤で表示し、割安・割高の断定ではありません。'+
       '✕・△・－・○・◎・⭐は同業比較上の目安で、株価の将来予測や購入推奨ではありません。'+
       (cachedNote?' '+esc(cachedNote)+'の参考データです。':'')+
-      '</div></section>';
+      '</div></details></section>';
   }
   async function loadFundamentals(){
     if(state.fundamentals)return state.fundamentals;
@@ -886,7 +893,17 @@ if(typeof document!=='undefined'){
     document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
     $('syncBtn').onclick=()=>loadCloudSnapshot().then(()=>loadDailyQuotes(true).catch(()=>{})).catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();renderStrategyConfig();$('btDays').addEventListener('change',()=>localStorage.setItem('ip7_bt_days',$('btDays').value));
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
-    if('serviceWorker'in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    if('serviceWorker'in navigator&&location.protocol.startsWith('http')){
+      const hadController=!!navigator.serviceWorker.controller;
+      let announced=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(!hadController||announced)return;
+        announced=true;
+        $('appUpdate').hidden=false;
+      });
+      navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+    }
+    $('appReload').onclick=()=>location.reload();
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
   }
   init();
