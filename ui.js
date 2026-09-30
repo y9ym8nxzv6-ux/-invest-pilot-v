@@ -529,7 +529,14 @@ if(typeof document!=='undefined'){
       table.innerHTML='';
       return;
     }
-    const rec=Number(d.recommended_days)||20;
+    const optimizedForFive=Number(d.optimizer_version)>=2&&Number(d.backtest_assumptions?.topN)===5;
+    const rec=optimizedForFive?(Number(d.recommended_days)||20):20;
+    if(!optimizedForFive){
+      title.textContent='5銘柄向けの自動改善を再計算中';
+      meta.textContent='以前の設定は10銘柄の検証値のため、5銘柄にそのまま当てはめません。再計算まで手動設定または暫定20営業日で表示します。';
+      table.innerHTML='';
+      return;
+    }
     const changed=d.changed&&Number(d.previous_recommended_days)!==rec;
     title.textContent='自動おすすめ：'+strategyDaysLabel(rec);
     meta.textContent=(changed?('前回 '+strategyDaysLabel(d.previous_recommended_days)+' → 今回変更。'):'前回から変更なし。')+' 信頼度 '+(d.confidence||'—')+'。微差では設定を変えません。';
@@ -558,7 +565,8 @@ if(typeof document!=='undefined'){
   function resolvedRebalanceDays(){
     const v=$('btDays')?$('btDays').value:'auto';
     if(v!=='auto')return Number(v)||20;
-    return Number(state.strategyConfig&&state.strategyConfig.recommended_days)||20;
+    if(Number(state.strategyConfig?.optimizer_version)!==2||Number(state.strategyConfig?.backtest_assumptions?.topN)!==5)return 20;
+    return Number(state.strategyConfig?.recommended_days)||20;
   }
   function fundamentalLabelClass(key){
     return key==='good'?'good':key==='caution'?'bad':'warn';
