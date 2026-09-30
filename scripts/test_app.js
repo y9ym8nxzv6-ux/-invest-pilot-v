@@ -21,6 +21,27 @@ assert.ok(excluded[0].shares_by_budget>=0);
 const semi=core.decorateForCapital(input,100000,'mid',1,'only');
 assert.deepEqual(semi.map(x=>x.rank),[7,115],'Global order must remain after filtering');
 
+const quoteSeries=[{close:950},{close:1050},{close:1020}];
+const buyable=core.buildPurchasePlan({code:'TEST',rank:1,technical_score:95,close:1020,budget_yen:12000},
+  {capital:100000,risk:'mid',lot:1,price:1020,history:quoteSeries});
+assert.equal(buyable.shares,11,'Share calculation must respect per-stock cap');
+assert.equal(buyable.estimated_total,11220);
+assert.equal(buyable.min_price,950);
+assert.equal(buyable.max_price,1050);
+assert.equal(buyable.within_budget,true);
+
+const overspend=core.buildPurchasePlan({code:'BIG1',technical_score:95,close:30000,budget_yen:20000},
+  {capital:100000,lot:1,price:30000,history:[]});
+assert.equal(overspend.shares,0,'A single share exceeding the allocation must show zero');
+assert.equal(overspend.allocation_insufficient,true);
+assert.equal(overspend.total_capital_insufficient,false);
+assert.equal(overspend.min_required,30000);
+
+const lotHundred=core.buildPurchasePlan({code:'LOT1',technical_score:90,close:1200,budget_yen:100000},
+  {capital:100000,lot:100,price:1200});
+assert.equal(lotHundred.shares,0,'100 share lot must be treated as indivisible');
+assert.equal(lotHundred.min_required,120000);
+
 const base={technical_score:92,trend_count:4,ret5:0.01,ret20:0.04,ret60:0.14,forecast20:null};
 assert.equal(signals.classify(base).key,'strongbuy');
 assert.notEqual(signals.classify({...base,ret20:null,ret5:null,ret60:null}).key,
@@ -34,7 +55,7 @@ for(const name of ['dailyAsOf','rankingTitle','researchCode','researchQuery',
   assert.ok(html.includes('id="'+name+'"'),'Missing '+name+' in HTML');
 }
 for(const name of ['loadDailyQuotes','tenDayHistoryHtml','quoteStrip','quoteFeature',
- 'quoteOf','showSelectedAnalysis','renderResearchResult']){
+ 'quoteOf','purchasePlanHtml','showSelectedAnalysis','renderResearchResult']){
   assert.ok(ui.includes('function '+name+'('),'Missing '+name+' in UI');
 }
-console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, search/daily UI contracts');
+console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, share affordability, search/daily UI contracts');
