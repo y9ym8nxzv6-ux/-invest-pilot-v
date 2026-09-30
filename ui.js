@@ -702,12 +702,13 @@ if(typeof document!=='undefined'){
       summaryCell('業種・テーマ分類',p.unique_themes+'分類')+
       summaryCell('買い判定の候補',p.qualifying_count+'銘柄');
     list.innerHTML=p.positions.map((x,i)=>
-      '<div class="basket-item"><div><strong>'+(i+1)+'. '+esc(x.company)+'</strong><div class="basket-sub">'+
+      '<div class="basket-item" role="button" tabindex="0" data-basket-code="'+esc(x.code)+'"><div><strong>'+(i+1)+'. '+esc(x.company)+'</strong><div class="basket-sub">'+
       esc(x.code)+' · 全市場 '+esc(x.rank)+'位 · '+esc(x.theme)+'<br>'+esc(x.signal)+
       ' · 終値 '+moneyWithDecimals(x.price)+' × '+x.shares+'株</div></div>'+
       '<div class="basket-cost">'+yen(x.estimated_total)+'<div class="basket-sub">'+
       ((x.estimated_total/(p.capital||1))*100).toFixed(1)+'% 配分</div></div></div>'
     ).join('')+(p.count<5?'<div class="basket-note">満たせなかった枠は「条件不足」扱いにしており、弱い銘柄で数合わせはしません。</div>':'')+note;
+    list.querySelectorAll('[data-basket-code]').forEach(el=>{const open=()=>pickResearch(el.dataset.basketCode);el.onclick=open;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();open()}}});
   }
 
   function currentRows(){
