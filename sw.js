@@ -1,6 +1,6 @@
-const CACHE='invest-pilot-app-v14';
-const DATA_CACHE='invest-pilot-data-v14';
-const ASSETS=['./','./index.html','./core.js','./signals.js','./ui.js','./research-worker.js','./manifest.webmanifest'];
+const CACHE='invest-pilot-app-v15';
+const DATA_CACHE='invest-pilot-data-v15';
+const ASSETS=['./','./index.html','./core.js','./signals.js','./industry.js','./ui.js','./research-worker.js','./manifest.webmanifest'];
 const DATA_FILES=['latest-ranking.json','all-analysis.json','stock-master.json','research.json','backtest-history.json','strategy-config.json','fundamentals.json','daily-changes.json'];
 
 self.addEventListener('install',event=>{
