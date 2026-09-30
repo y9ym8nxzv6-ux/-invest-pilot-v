@@ -1,12 +1,13 @@
 'use strict';
 const IPSignals = (() => {
+  const metric=v=>v===null||v===undefined||v===''?NaN:Number(v);
   function classify(x){
     const s=Number(x.technical_score)||0;
-    const r5=Number(x.ret5), r20=Number(x.ret20), r60=Number(x.ret60);
+    const r5=metric(x.ret5), r20=metric(x.ret20), r60=metric(x.ret60);
     const trend=Number(x.trend_count)||0;
     const fc=x.forecast20||null;
-    const upRate=fc&&Number.isFinite(Number(fc.up_rate))?Number(fc.up_rate):null;
-    const median=fc&&Number.isFinite(Number(fc.median))?Number(fc.median):null;
+    const upRate=fc&&Number.isFinite(metric(fc.up_rate))?metric(fc.up_rate):null;
+    const median=fc&&Number.isFinite(metric(fc.median))?metric(fc.median):null;
     const reasons=[];
 
     if(trend===4) reasons.push('上昇トレンド強い');
