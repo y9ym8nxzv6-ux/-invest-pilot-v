@@ -27,6 +27,7 @@ jobs:
         run: |
           node --check core.js
           node --check signals.js
+          node --check industry.js
           node --check ui.js
           node --check research-worker.js
           node scripts/test_app.js
