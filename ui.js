@@ -32,7 +32,8 @@ if(typeof document!=='undefined'){
     const risk=$('risk')?.value||'mid';
     const lot=Number($('lotMode')?.value)||1;
     const q=quoteOf(x.code);
-    return IPCore.buildPurchasePlan(x,{capital,risk,lot,price:q?.close||x.close,history:q?.daily_history||[]});
+    const slot=Math.min(capital*IPCore.singleLimitPct(capital,risk)/100,capital*.90/5);
+    return IPCore.buildPurchasePlan({...x,budget_yen:slot},{capital,risk,lot,price:q?.close||x.close,history:q?.daily_history||[]});
   }
   function purchasePlanHtml(x,compact=false){
     const p=purchasePlanFor(x);
@@ -48,7 +49,7 @@ if(typeof document!=='undefined'){
       : (p.total_capital_insufficient?'運用資金 '+moneyWithDecimals(p.capital_yen)+'より最低購入額が高い状態です。':
           '運用資金全体では買える可能性がありますが、1銘柄の配分枠 '+moneyWithDecimals(p.budget_yen)+'を超えます。');
     const note='<div class="plan-note">'+why+' · '+unitText+'。直近の値幅は過去の終値範囲で、指値の推奨価格ではありません。</div>';
-    return '<div class="purchase-plan'+(compact?' compact':'')+'"><div class="plan-heading">価格帯と購入可能株数 <span>自分の設定条件で試算</span></div>'+
+    return '<div class="purchase-plan'+(compact?' compact':'')+'"><div class="plan-heading">価格帯と購入可能株数 <span>最大5銘柄の配分枠で試算</span></div>'+
       '<div class="plan-range"><span>直近10営業日の終値範囲</span><b>'+range+'</b></div>'+main+note+'</div>';
   }
   function tenDayHistoryHtml(code){
