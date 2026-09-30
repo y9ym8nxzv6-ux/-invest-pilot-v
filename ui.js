@@ -27,6 +27,30 @@ if(typeof document!=='undefined'){
     if(!q)return '<div class="quote-feature"><b>前営業日比</b><span class="quote-date">終値データを取得できませんでした。最新データを再読込すると更新される場合があります。</span></div>';
     return '<div class="quote-feature"><div class="small">'+quoteDate(q.price_date)+' 終値 '+moneyWithDecimals(q.close)+'</div><b class="quote-change '+changeColor(q.change_pct)+'">'+signedYen(q.change_yen)+'（'+signedPct(q.change_pct)+'）</b><span class="quote-date">前営業日の終値 '+moneyWithDecimals(q.previous_close)+' からの変化。リアルタイムではありません。</span></div>';
   }
+  function purchasePlanFor(x){
+    const capital=Number($('capital')?.value)||100000;
+    const risk=$('risk')?.value||'mid';
+    const lot=Number($('lotMode')?.value)||1;
+    const q=quoteOf(x.code);
+    return IPCore.buildPurchasePlan(x,{capital,risk,lot,price:q?.close||x.close,history:q?.daily_history||[]});
+  }
+  function purchasePlanHtml(x,compact=false){
+    const p=purchasePlanFor(x);
+    if(!p.price)return '<div class="purchase-plan"><div class="plan-heading">購入株数の試算</div><div class="plan-note">株価を取得できません。現時点では株数を計算できません。</div></div>';
+    const range=p.count>=2?moneyWithDecimals(p.min_price)+'〜'+moneyWithDecimals(p.max_price):'価格帯データなし';
+    const basis='直近終値 '+moneyWithDecimals(p.price);
+    const unitText=p.lot===100?'100株単位':'1株単位';
+    const main=p.shares>0
+      ? '<div class="plan-result"><strong>'+p.shares.toLocaleString('ja-JP')+'株</strong><span>'+basis+' × '+p.shares+'株 = <b>'+moneyWithDecimals(p.estimated_total)+'</b></span></div>'
+      : '<div class="plan-result plan-blocked"><strong>0株（枠内では購入不可）</strong><span>最小'+p.lot+'株の必要額 '+moneyWithDecimals(p.min_required)+'</span></div>';
+    const why=p.shares>0
+      ? '概算購入額 '+moneyWithDecimals(p.estimated_total)+' / 配分枠 '+moneyWithDecimals(p.budget_yen)+'（手数料別）'
+      : (p.total_capital_insufficient?'運用資金 '+moneyWithDecimals(p.capital_yen)+'より最低購入額が高い状態です。':
+          '運用資金全体では買える可能性がありますが、1銘柄の配分枠 '+moneyWithDecimals(p.budget_yen)+'を超えます。');
+    const note='<div class="plan-note">'+why+' · '+unitText+'。直近の値幅は過去の終値範囲で、指値の推奨価格ではありません。</div>';
+    return '<div class="purchase-plan'+(compact?' compact':'')+'"><div class="plan-heading">価格帯と購入可能株数 <span>自分の設定条件で試算</span></div>'+
+      '<div class="plan-range"><span>直近10営業日の終値範囲</span><b>'+range+'</b></div>'+main+note+'</div>';
+  }
   function tenDayHistoryHtml(code){
     const q=quoteOf(code),hist=Array.isArray(q?.daily_history)?q.daily_history:[];
     if(hist.length<2)return '<div class="daily-note">直近10営業日の履歴はまだ利用できません。</div>';
@@ -126,6 +150,7 @@ if(typeof document!=='undefined'){
         <div class="analysis-judge">${esc(sig.label)} · 総合点 ${Number(a.technical_score).toFixed(1)}</div>
         <div class="analysis-reason">${esc(sig.reason)}</div>
         ${quoteStrip(code)}
+        ${purchasePlanHtml(a,true)}
         ${fundamentalHtml(code,true)}
         <div class="compare-grid">
           <div class="compare-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
@@ -231,6 +256,7 @@ if(typeof document!=='undefined'){
       </div>
       <div class="analysis-judge">総合点 ${Number(a.technical_score).toFixed(1)} / 100</div>
       ${quoteFeature(a.code)}
+      ${purchasePlanHtml(a)}
       <div class="analysis-reason"><b>この評価の理由：</b> ${esc(sig.reason)}</div>
       <div class="analysis-grid">
         <div class="analysis-cell"><div class="k">過去20日</div><div class="v ${a.ret20>=0?'good':'bad'}">${pct(a.ret20)}</div></div>
@@ -664,13 +690,13 @@ if(typeof document!=='undefined'){
           <div><div class="stock-title">#${x.rank} ${esc(x.company||x.code)}${x.is_semiconductor?'<span class="badge semi">半導体</span>':''}</div><div class="stock-code">${esc(x.code)} · ${esc(x.sector33||x.market||'')}</div></div>
           <div class="signal-pill ${sigClass}">${sig.label}</div>
         </div>
+        ${quoteStrip(x.code)}
         <div class="stock-main">
           <div><div class="k">${quoteOf(x.code)?"直近の終値":"解析時の参考価格"}</div><div class="v">${moneyWithDecimals(x.close)}</div></div>
-          <div><div class="k">総合点</div><div class="v">${(+x.technical_score).toFixed(1)}</div></div>
-          <div><div class="k">目安株数</div><div class="v">${x.shares_by_budget>0?x.shares_by_budget+'株':'—'}</div></div>
+          <div><div class="k">モメンタム総合点</div><div class="v">${(+x.technical_score).toFixed(1)}</div></div>
         </div>
-        ${quoteStrip(x.code)}
-        <div class="stock-reason">${esc(sig.reason)} · 目安枠 ${yen(x.budget_yen)}</div>
+        ${purchasePlanHtml(x,true)}
+        <div class="stock-reason">${esc(sig.reason)}</div>
         ${fundamentalHtml(x.code,true)}
         ${forecastHtml(x)}
         <div class="stock-details">
