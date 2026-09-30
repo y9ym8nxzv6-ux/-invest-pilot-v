@@ -69,7 +69,7 @@ function evaluate(hist,rebalanceDays){
     if(map.size<50)continue;
     try{
       const d=IPCore.runBacktest(map,{
-        mode:'all',capital:1000000,risk:'mid',lot:1,topN:10,
+        mode:'all',capital:200000,risk:'mid',lot:1,topN:5,
         rebalanceDays,costBps:10,reserve:.10,theme:{}
       });
       const held=Math.max(rebalanceDays,d.periods*rebalanceDays);
@@ -135,7 +135,7 @@ let previous=null;
 try{previous=JSON.parse(fs.readFileSync(OUT,'utf8'))}catch{}
 
 let selected=best;
-const previousDays=Number(previous?.recommended_days);
+const previousDays=Number(previous?.optimizer_version)===2?Number(previous?.recommended_days):NaN;
 if(!Number.isFinite(previousDays)&&confidence(best)==='低め'){
   selected=evaluations.find(x=>x.days===20)||best;
 }
@@ -161,13 +161,14 @@ if(changed){
 
 const payload={
   generated_at:new Date().toISOString(),
-  optimizer_version:1,
+  optimizer_version:2,
+  backtest_assumptions:{capital:200000,topN:5,lot:1,risk:'mid',costBps:10,reserve:.10},
   recommended_days:selected.days,
   previous_recommended_days:Number.isFinite(previousDays)?previousDays:null,
   changed:Boolean(changed),
   confidence:confidence(selected),
   change_threshold:changeThreshold,
-  method:'過去5年のデータを複数期間に分け、10/20/40/60/100営業日をコスト込みで比較。利益・対ベンチマーク・最大下落・期間ごとのばらつき・検証回数を総合評価し、検証回数不足や微差では設定を変更しない。',
+  method:'20万円・最大5銘柄・1株単位で、過去5年のデータを複数期間に分け、10/20/40/60/100営業日をコスト込みで比較.利益・対ベンチマーク・最大下落・期間ごとのばらつき・検証回数を総合評価し、検証回数不足や微差では設定を変更しない。',
   note:'過去データに基づく自動最適化であり、将来の成績を保証するものではありません。',
   evaluations:evaluations.sort((a,b)=>a.days-b.days),
   change_history:history
