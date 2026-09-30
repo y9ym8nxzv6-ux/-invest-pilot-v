@@ -42,6 +42,44 @@ const lotHundred=core.buildPurchasePlan({code:'LOT1',technical_score:90,close:12
 assert.equal(lotHundred.shares,0,'100 share lot must be treated as indivisible');
 assert.equal(lotHundred.min_required,120000);
 
+const basketUniverse=[
+ {code:'A',company:'A',rank:1,technical_score:95,trend_count:4,close:1000,sector33:'銀行業',eligible:true,signal:'🟢 買い候補'},
+ {code:'B',company:'B',rank:2,technical_score:94,trend_count:4,close:2000,sector33:'卸売業',eligible:true,signal:'🟢 買い候補'},
+ {code:'C',company:'C',rank:3,technical_score:93,trend_count:4,close:500,sector33:'電気機器',eligible:true,signal:'🟢 買い候補'},
+ {code:'D',company:'D',rank:4,technical_score:92,trend_count:4,close:1200,sector33:'医薬品',eligible:true,signal:'🟢 買い候補'},
+ {code:'E',company:'E',rank:5,technical_score:91,trend_count:4,close:600,sector33:'食品',eligible:true,signal:'🟢 買い候補'},
+ {code:'F',company:'F',rank:6,technical_score:90,trend_count:4,close:500,sector33:'銀行業',eligible:true,signal:'🟢 買い候補'}
+];
+const fiveBasket=core.buildFiveStockPlan(basketUniverse,{capital:200000,lot:1,reserve:.10});
+assert.equal(fiveBasket.count,5);
+assert.equal(fiveBasket.positions.length,5);
+assert.ok(fiveBasket.diversified);
+assert.ok(fiveBasket.committed<=200000);
+assert.ok(fiveBasket.remaining>=20000);
+assert.ok(fiveBasket.positions.every(x=>x.estimated_total<=30000.01));
+assert.ok(fiveBasket.positions.every(x=>x.shares*x.price===x.estimated_total));
+
+const weakExpansion=core.buildFiveStockPlan([
+ basketUniverse[0],
+ {...basketUniverse[1],technical_score:94},
+ {...basketUniverse[2],technical_score:72}
+],{capital:200000,lot:1});
+assert.equal(weakExpansion.count,2,'Do not fill five slots with weak signals');
+assert.ok(weakExpansion.remaining>100000);
+assert.match(weakExpansion.status,/2銘柄/);
+
+const sectorOnly=core.buildFiveStockPlan([
+ ...basketUniverse.slice(0,5).map((x,i)=>({...x,sector33:'銀行業',technical_score:95-i}))
+],{capital:200000,lot:1});
+assert.ok(sectorOnly.count<=2,'Never add three names from one correlated sector proxy');
+assert.equal(sectorOnly.diversified,false);
+
+const expensiveOnly=core.buildFiveStockPlan([
+ {...basketUniverse[0],code:'EXP',close:50000}
+],{capital:200000,lot:1});
+assert.equal(expensiveOnly.count,0,'One share over per-name cap cannot be purchased');
+assert.ok(expensiveOnly.expensive_skipped>=1);
+
 const base={technical_score:92,trend_count:4,ret5:0.01,ret20:0.04,ret60:0.14,forecast20:null};
 assert.equal(signals.classify(base).key,'strongbuy');
 assert.notEqual(signals.classify({...base,ret20:null,ret5:null,ret60:null}).key,
@@ -55,7 +93,7 @@ for(const name of ['dailyAsOf','rankingTitle','researchCode','researchQuery',
   assert.ok(html.includes('id="'+name+'"'),'Missing '+name+' in HTML');
 }
 for(const name of ['loadDailyQuotes','tenDayHistoryHtml','quoteStrip','quoteFeature',
- 'quoteOf','purchasePlanHtml','showSelectedAnalysis','renderResearchResult']){
+ 'quoteOf','purchasePlanHtml','renderFiveStockBasket','showSelectedAnalysis','renderResearchResult']){
   assert.ok(ui.includes('function '+name+'('),'Missing '+name+' in UI');
 }
-console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, share affordability, search/daily UI contracts');
+console.log('APP UNIT TESTS PASS: filtered ranks, signal null-handling, share affordability, five-stock allocation, search/daily UI contracts');
