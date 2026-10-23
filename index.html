@@ -115,7 +115,8 @@
 </style></head><body><div class="wrap">
 <div id="appUpdate" class="app-update" hidden>新しい画面の準備ができました。<button id="appReload" type="button">最新版を表示</button></div>
 <div class="hero">
-<h1>Invest Pilot <span class="badge">2026.09.30 · R16</span></h1>
+<h1>Invest Pilot <span class="badge">2026.10.23 · R17</span></h1>
+<div class="btnrow"><button class="btn secondary" id="refreshApp" type="button">アプリを再読み込み</button><button class="btn secondary" id="openKioxia" type="button">キオクシアを確認</button></div>
 <div class="muted">国内株を同じ基準で比較し、「今どの銘柄を見ればいいか」を分かりやすく整理します。</div>
 <div class="summary3" id="signalFilters">
   <div class="summarybox filterbox active" data-signal="all"><div class="t">すべて</div><div class="n" id="allCount">--</div></div>
@@ -215,6 +216,12 @@
   <input id="researchCode" type="hidden">
   <input id="researchCompany" type="hidden">
   <div id="selectedStockInfo" class="selected-stock"></div>
+  <div id="holdingPanel" class="msg" hidden>
+    <strong>この銘柄の保有損益</strong>
+    <div class="grid2"><label>平均取得単価（円・分割後）<input id="holdingCost" type="number" min="0.01" step="any" inputmode="decimal"></label><label>保有株数（分割後）<input id="holdingShares" type="number" min="1" step="1" inputmode="numeric"></label></div>
+    <div id="holdingResult" aria-live="polite"></div>
+    <div class="small">入力はこの端末に保存。確認できた終値による概算で、税・手数料は含みません。株式分割後は単価と株数を見直してください。</div>
+  </div>
   <div id="stockAnalysisCard" class="analysis-card"></div><div class="small" style="margin:8px 0 4px">前営業日比は前の取引日終値との差（円・％）。緑が上昇、赤が下落です。直近10営業日の一覧も下に表示されます。</div>
   <div class="btnrow">
     <button class="btn" id="researchBtn">検索する</button>

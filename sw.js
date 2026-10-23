@@ -1,5 +1,5 @@
-const CACHE='invest-pilot-app-v16';
-const DATA_CACHE='invest-pilot-data-v16';
+const CACHE='invest-pilot-app-v17';
+const DATA_CACHE='invest-pilot-data-v17';
 const ASSETS=['./','./index.html','./core.js','./signals.js','./industry.js','./ui.js','./research-worker.js','./manifest.webmanifest'];
 const DATA_FILES=['latest-ranking.json','all-analysis.json','stock-master.json','research.json','backtest-history.json','strategy-config.json','fundamentals.json','daily-changes.json'];
 
@@ -10,7 +10,7 @@ self.addEventListener('install',event=>{
 self.addEventListener('activate',event=>{
   event.waitUntil(
     caches.keys()
-      .then(keys=>Promise.all(keys.filter(k=>k!==CACHE&&k!==DATA_CACHE).map(k=>caches.delete(k))))
+      .then(keys=>Promise.all(keys.filter(k=>/^invest-pilot-(app|data)-v/.test(k)&&k!==CACHE&&k!==DATA_CACHE).map(k=>caches.delete(k))))
       .then(()=>self.clients.claim())
   );
 });
@@ -24,7 +24,8 @@ async function networkFirst(request){
   const cache=await caches.open(DATA_CACHE);
   try{
     const response=await fetch(request);
-    if(response&&response.ok)cache.put(request,response.clone());
+    if(!response||!response.ok)throw new Error('Data request failed');
+    await cache.put(new Request(request.url.split('?')[0]),response.clone());
     return response;
   }catch(err){
     const cached=await cache.match(request,{ignoreSearch:true});

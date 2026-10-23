@@ -81,7 +81,7 @@ if(typeof document!=='undefined'){
       const d=await r.json(),map=new Map(Object.entries(d.stocks||{}));
       if(map.size<2500)throw new Error('前営業日比データの件数不足');
       state.dailyQuotes=map;state.dailyUpdatedAt=d.generated_at||null;state.dailyError=false;
-      showDailyStatus();renderRows();
+      showDailyStatus();renderRows();renderHolding();
       if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
       renderCompare().catch(()=>{});renderFavorites();
       return map;
@@ -214,7 +214,8 @@ if(typeof document!=='undefined'){
     })();
     try{return await state.stockMasterPromise}finally{state.stockMasterPromise=null}
   }
-  async function loadAllAnalysis(){
+  async function loadAllAnalysis(force=false){
+    if(force){if(state.allAnalysisPromise)await state.allAnalysisPromise.catch(()=>{});state.allAnalysis=null;}
     if(state.allAnalysis)return state.allAnalysis;
     if(state.allAnalysisPromise)return state.allAnalysisPromise;
     state.allAnalysisPromise=(async()=>{
@@ -270,6 +271,29 @@ if(typeof document!=='undefined'){
       ${fundamentalHtml(a.code,false)}
       <div class="explain-box"><b>総合点とは？</b><br>過去の値動き、上昇トレンド、売買代金を国内株で比較したモメンタム中心の相対評価です。業績参考は順位に入れていません。100点に近いほど現在の条件が強いことを示しますが、将来の上昇率を保証する点数ではありません。</div>`;
   }
+  function renderHolding(){
+    if(!state.selectedStock)return;
+    const cost=Number($('holdingCost').value),shares=Number($('holdingShares').value),box=$('holdingResult');
+    if(!(cost>0&&Number.isFinite(cost)&&Number.isSafeInteger(shares)&&shares>0)){
+      box.textContent='取得単価と保有株数を入力してください。';return;
+    }
+    const q=quoteOf(state.selectedStock.code),price=Number(q?.close);
+    if(!(price>0&&Number.isFinite(price))){box.textContent='新しい終値を取得できないため、損益は計算しません。';return;}
+    const pnl=(price-cost)*shares,rate=price/cost-1;
+    box.innerHTML='<p>'+esc(quoteDate(q.price_date))+' 終値 '+moneyWithDecimals(price)+'</p><strong class="'+changeColor(rate)+'">'+(pnl>0?'+':'')+yen(pnl)+'（'+signedPct(rate)+'）</strong><p>評価額 '+yen(price*shares)+' ／ 取得総額 '+yen(cost*shares)+'</p>'+(state.dailyError?'<div class="warn">今回の取得に失敗したため、前回取得した終値を使用しています。</div>':'');
+  }
+  async function refreshAllData(){
+    if(state.busy)return;
+    state.busy=true;toggleBusy(true);
+    try{
+      const jobs=[['ランキング',()=>loadCloudSnapshot()],['終値',()=>loadDailyQuotes(true)],['銘柄分析',()=>loadAllAnalysis(true)],['業績参考',()=>loadFundamentals(true)],['ニュース',()=>loadCloudResearch(true)]];
+      const results=await Promise.allSettled(jobs.map(([,run])=>run()));
+      const failed=jobs.filter((_,i)=>results[i].status==='rejected').map(([name])=>name);
+      renderRows();renderFavorites();renderHolding();
+      if(state.selectedStock)await showSelectedAnalysis(state.selectedStock.code);
+      $('topMessage').textContent=failed.length?'一部を更新できませんでした：'+failed.join('・')+'。各データの基準日を確認してください。':'公開済みのランキング・終値・銘柄分析・業績・ニュースを再取得しました。終値データで、リアルタイム株価ではありません。';
+    }finally{state.busy=false;toggleBusy(false);stopWait();}
+  }
   async function showSelectedAnalysis(code){
     const fallback=state.ranked.find(x=>String(x.code)===String(code));
     if(fallback)renderAnalysisCard(fallback);
@@ -279,10 +303,12 @@ if(typeof document!=='undefined'){
     }
     try{
       const map=await loadAllAnalysis();
+      if(String(state.selectedStock?.code)!==String(code))return;
       const a=map.get(String(code));
       if(a)renderAnalysisCard(a);
       else $('stockAnalysisCard').innerHTML='<div class="small">この銘柄は履歴不足のため、現在は総合分析の対象外です。</div>';
     }catch(e){
+      if(String(state.selectedStock?.code)!==String(code))return;
       if(!fallback)$('stockAnalysisCard').innerHTML='<div class="small">全銘柄分析を更新中です。少し待って再度開いてください。</div>';
     }
   }
@@ -357,6 +383,11 @@ if(typeof document!=='undefined'){
   }
   function selectStock(s,doResearch=true){
     state.selectedStock=s;
+    $('holdingPanel').hidden=false;
+    let holding={};try{holding=JSON.parse(localStorage.getItem('ip17_holding_'+s.code)||'{}')||{}}catch{}
+    $('holdingCost').value=holding.cost||'';
+    $('holdingShares').value=holding.shares||'';
+    renderHolding();
     $('researchCode').value=s.code||'';
     $('researchCompany').value=s.company||'';
     $('researchQuery').value=(s.code||'')+' '+(s.company||'');
@@ -500,7 +531,8 @@ if(typeof document!=='undefined'){
     prefetchCloudAssets();
     return d;
   }
-  async function loadCloudResearch(){
+  async function loadCloudResearch(force=false){
+    if(force){if(state.researchPromise)await state.researchPromise.catch(()=>{});state.cloudResearch=null;}
     if(state.cloudResearch)return state.cloudResearch;
     if(state.researchPromise)return state.researchPromise;
     state.researchPromise=(async()=>{
@@ -636,7 +668,8 @@ if(typeof document!=='undefined'){
       (cachedNote?' '+esc(cachedNote)+'の参考データです。':'')+
       '</div></details></section>';
   }
-  async function loadFundamentals(){
+  async function loadFundamentals(force=false){
+    if(force){if(state.fundamentalsPromise)await state.fundamentalsPromise.catch(()=>{});state.fundamentals=null;}
     if(state.fundamentals)return state.fundamentals;
     if(state.fundamentalsPromise)return state.fundamentalsPromise;
     state.fundamentalsPromise=(async()=>{
@@ -904,6 +937,17 @@ if(typeof document!=='undefined'){
       navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
     }
     $('appReload').onclick=()=>location.reload();
+    $('refreshApp').onclick=async()=>{
+      $('refreshApp').disabled=true;
+      try{if('serviceWorker'in navigator){const r=await navigator.serviceWorker.getRegistration();if(r)await r.update();}}catch{}
+      location.reload();
+    };
+    $('openKioxia').onclick=()=>{switchPane('research');openStockByCode('285A');};
+    $('syncBtn').onclick=$('syncBtnBottom').onclick=refreshAllData;
+    for(const id of ['holdingCost','holdingShares'])$(id).addEventListener('input',()=>{
+      if(state.selectedStock){try{localStorage.setItem('ip17_holding_'+state.selectedStock.code,JSON.stringify({cost:$('holdingCost').value,shares:$('holdingShares').value}));}catch{}}
+      renderHolding();
+    });
     setTimeout(()=>loadCloudSnapshot().catch(()=>{}),300);
   }
   init();
