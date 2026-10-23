@@ -115,7 +115,7 @@
 </style></head><body><div class="wrap">
 <div id="appUpdate" class="app-update" hidden>新しい画面の準備ができました。<button id="appReload" type="button">最新版を表示</button></div>
 <div class="hero">
-<h1>Invest Pilot <span class="badge">2026.10.23 · R17</span></h1>
+<h1>Invest Pilot <span class="badge">2026.10.23 · R18</span></h1>
 <div class="btnrow"><button class="btn secondary" id="refreshApp" type="button">アプリを再読み込み</button><button class="btn secondary" id="openKioxia" type="button">キオクシアを確認</button></div>
 <div class="muted">国内株を同じ基準で比較し、「今どの銘柄を見ればいいか」を分かりやすく整理します。</div>
 <div class="summary3" id="signalFilters">
@@ -161,7 +161,7 @@
   <div class="controls">
     <div><label>運用資金</label><input id="capital" type="number" min="10000" step="10000" value="200000"></div>
     <div><label>1銘柄への資金配分</label><select id="risk"><option value="low">控えめ</option><option value="mid" selected>標準</option><option value="high">積極的</option></select></div>
-    <div><label>半導体をどうする？</label><select id="semiMode"><option value="all">含める</option><option value="exclude">除外する</option><option value="only">半導体だけ見る</option></select></div>
+    <div><label>表示テーマ</label><select id="semiMode"><option value="all">全銘柄</option><option value="exclude">除外する</option><option value="only">半導体だけ見る</option><option value="cyber">サイバーセキュリティ</option></select></div>
     <div><label>購入単位</label><select id="lotMode"><option value="1">1株ずつ</option><option value="100">100株単位</option></select></div>
   </div>
   <div class="btnrow"><button class="btn" id="syncBtn">最新データを読み込む</button><button class="btn secondary" id="recalcBtn">条件を反映</button></div>

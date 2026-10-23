@@ -227,12 +227,31 @@ if(typeof document!=='undefined'){
       for(const x of (d.stocks||[]))map.set(String(x.code),x);
       if(!map.size)throw new Error('全銘柄分析データが空です');
       state.allAnalysis=map;
+      renderRows();
       renderDataHealth();
       setTimeout(()=>renderFavoriteChanges().catch(()=>{}),0);
       setTimeout(()=>renderCompare().catch(()=>{}),0);
       return map;
     })();
     try{return await state.allAnalysisPromise}finally{state.allAnalysisPromise=null}
+  }
+  const CYBER_CODES=new Set(['2326','3692','4417','4475']);
+  function themeRows(){return $('semiMode').value==='cyber'?[...(state.allAnalysis?.values()||state.ranked)].filter(x=>CYBER_CODES.has(String(x.code))).sort((a,b)=>a.rank-b.rank):state.ranked;}
+  async function loadSignalHistory(){
+    try{
+      const r=await fetch('./data/signal-history.json?ts='+Date.now(),{cache:'no-store'});
+      if(!r.ok)throw Error('history unavailable');
+      state.signalHistory=await r.json();
+      renderRows();
+      if(state.selectedStock)showSelectedAnalysis(state.selectedStock.code);
+    }catch{state.signalHistory=null;}
+  }
+  function signalProgress(x){
+    const h=state.signalHistory?.stocks?.[String(x.code)];
+    if(!h||h.key!==IPSignals.classify(x).key)return '<div class="simple-note">判定の経過：記録を確認中</div>';
+    const days=Math.max(0,Math.floor((Date.now()-Date.parse(h.since+'T00:00:00Z'))/86400000));
+    const change=Number.isFinite(h.return_pct)?`<b class="${h.return_pct>=0?'up':'down'}">${signedPct(h.return_pct)}</b>`:'株価履歴待ち';
+    return `<div class="simple-note">${h.initial?'判定の記録開始':'現在の判定になって'}から <b>${days}日</b> · ${change}<br><small>${esc(h.since)}${h.initial?' 記録開始（実際の判定開始日は不明）':' 判定確認'}${h.as_of?' ／ '+esc(h.as_of)+'終値まで':''}。騰落率は${esc(h.price_date||'記録時')}の調整後終値が基準。配当・売買費用を含まない参考値。</small></div>`;
   }
   function signalClass(key){
     return key==='strongbuy'?'strongbuy':key==='buy'?'buy':key==='strongsell'?'strongsell':key==='avoid'?'avoid':key==='wait'?'wait':'watch';
@@ -258,6 +277,7 @@ if(typeof document!=='undefined'){
       </div>
       <div class="analysis-judge">総合点 ${Number(a.technical_score).toFixed(1)} / 100</div>
       ${quoteFeature(a.code)}
+      ${signalProgress(a)}
       ${purchasePlanHtml(a)}
       <div class="analysis-reason"><b>この評価の理由：</b> ${esc(sig.reason)}</div>
       <div class="analysis-grid">
@@ -286,7 +306,7 @@ if(typeof document!=='undefined'){
     if(state.busy)return;
     state.busy=true;toggleBusy(true);
     try{
-      const jobs=[['ランキング',()=>loadCloudSnapshot()],['終値',()=>loadDailyQuotes(true)],['銘柄分析',()=>loadAllAnalysis(true)],['業績参考',()=>loadFundamentals(true)],['ニュース',()=>loadCloudResearch(true)]];
+      const jobs=[['判定履歴',()=>loadSignalHistory()],['ランキング',()=>loadCloudSnapshot()],['終値',()=>loadDailyQuotes(true)],['銘柄分析',()=>loadAllAnalysis(true)],['業績参考',()=>loadFundamentals(true)],['ニュース',()=>loadCloudResearch(true)]];
       const results=await Promise.allSettled(jobs.map(([,run])=>run()));
       const failed=jobs.filter((_,i)=>results[i].status==='rejected').map(([name])=>name);
       renderRows();renderFavorites();renderHolding();
@@ -719,6 +739,7 @@ if(typeof document!=='undefined'){
       loadDailyQuotes().catch(()=>{if(!state.dailyQuotes&&$('dailyAsOf'))$('dailyAsOf').textContent='前営業日比：現在取得できません（ランキングは表示可能）';});
       loadStockMaster().catch(()=>{});
       loadAllAnalysis().catch(()=>{});
+      loadSignalHistory();
     },200);
     setTimeout(()=>{
       loadCloudResearch().catch(()=>{});
@@ -765,7 +786,7 @@ if(typeof document!=='undefined'){
     const mode=$('semiMode').value;
     const risk=$('risk').value;
     const lot=Number($('lotMode').value)||1;
-    const priced=state.ranked.filter(x=>IPCore.modeOK(x,mode)).map(x=>{
+    const priced=themeRows().filter(x=>mode==='cyber'||IPCore.modeOK(x,mode)).map(x=>{
       const q=quoteOf(x.code);
       const ago=q?.price_date?Date.now()-Date.parse(q.price_date+'T00:00:00+09:00'):Infinity;
       if(!q||!Number.isFinite(ago)||ago>7*86400000)return {...x,eligible:false,close:NaN};
@@ -795,14 +816,15 @@ if(typeof document!=='undefined'){
 
   function currentRows(){
     const capital=+$('capital').value||100000,risk=$('risk').value,lot=+$('lotMode').value||1,mode=$('semiMode').value;
-    const priced=state.dailyQuotes?state.ranked.map(x=>{const q=quoteOf(x.code);return q?{...x,close:q.close}:x}):state.ranked;
-    return IPCore.decorateForCapital(priced,capital,risk,lot,mode).slice(0,100);
+    const source=themeRows();
+    const priced=state.dailyQuotes?source.map(x=>{const q=quoteOf(x.code);return q?{...x,close:q.close}:x}):source;
+    return IPCore.decorateForCapital(priced,capital,risk,lot,mode==='cyber'?'all':mode).slice(0,100);
   }
   function renderRows(resetVisible=false){
     if(resetVisible)state.visibleCount=20;
     const mode=$('semiMode').value;
     const heading=$('rankingTitle');
-    if(heading)heading.textContent=mode==='all'?'国内株 総合ランキング TOP100':mode==='only'?'半導体 上位候補（最大100件）':'半導体を除いた上位候補（最大100件）';
+    if(heading)heading.textContent=mode==='cyber'?'サイバーセキュリティ（選定4社：デジタルアーツ・FFRI・GSX・HENNGE）':mode==='all'?'国内株 総合ランキング TOP100':mode==='only'?'半導体 上位候補（最大100件）':'半導体を除いた上位候補（最大100件）';
     const rows=currentRows();
     const withSig=rows.map(x=>({...x,_sig:(globalThis.IPSignals&&IPSignals.classify)?IPSignals.classify(x):{key:'watch',label:'🔵 監視',reason:'条件確認中'}}));
     const counts={strongbuy:0,buy:0,wait:0,watch:0,avoid:0,strongsell:0};
@@ -826,6 +848,7 @@ if(typeof document!=='undefined'){
           <div class="signal-pill ${sigClass}">${sig.label}</div>
         </div>
         ${quoteStrip(x.code)}
+        ${signalProgress(x)}
         <div class="stock-main">
           <div><div class="k">${quoteOf(x.code)?"直近の終値":"解析時の参考価格"}</div><div class="v">${moneyWithDecimals(x.close)}</div></div>
           <div><div class="k">モメンタム総合点</div><div class="v">${(+x.technical_score).toFixed(1)}</div></div>
@@ -923,7 +946,7 @@ if(typeof document!=='undefined'){
     $('capital').value=localStorage.getItem('ip7_capital')||200000;$('risk').value=localStorage.getItem('ip7_risk')||'mid';$('semiMode').value=localStorage.getItem('ip7_semi')||'all';$('lotMode').value=localStorage.getItem('ip7_lot')||'1';$('btCapital').value=$('capital').value;$('btLot').value=$('lotMode').value;$('btDays').value=localStorage.getItem('ip7_bt_days')||'auto';$('sourcePage').value=settings.source;$('relayMode').value=settings.relay;$('semiExtra').value=(settings.theme.extra||[]).join(',');$('semiExclude').value=(settings.theme.exclude||[]).join(',');$('autoToggle').classList.toggle('on',settings.auto);
     try{const snap=await idbGet('snapshots','latest');if(snap?.ranked?.length){state.snapshot=snap;state.ranked=snap.ranked;state.months=snap.months||0}}catch{}renderStatus();renderRows();
     document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>switchPane(b.dataset.pane));
-    document.querySelectorAll('.filterbox').forEach(b=>b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>x.classList.toggle('active',x===b));renderRows();});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
+    document.querySelectorAll('.filterbox').forEach(b=>{b.setAttribute('role','button');b.tabIndex=0;b.onclick=()=>{state.signalFilter=b.dataset.signal||'all';state.visibleCount=20;document.querySelectorAll('.filterbox').forEach(x=>{x.classList.toggle('active',x===b);x.setAttribute('aria-pressed',String(x===b));});switchPane('screen');renderRows();requestAnimationFrame(()=>$('rankingTitle').scrollIntoView({behavior:'smooth',block:'start'}));};b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();b.click();}};});['capital','risk','semiMode','lotMode'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='capital')$('btCapital').value=$('capital').value;if(id==='lotMode')$('btLot').value=$('lotMode').value;renderRows(true)}));
     $('syncBtn').onclick=()=>loadCloudSnapshot().then(()=>loadDailyQuotes(true).catch(()=>{})).catch(e=>{stopWait();$('topMessage').textContent='更新エラー：'+e.message});$('syncBtnBottom').onclick=$('syncBtn').onclick;$('recalcBtn').onclick=()=>renderRows(true);$('moreBtn').onclick=()=>{state.visibleCount=Math.min(100,state.visibleCount+20);renderRows()};$('compareBtn').onclick=compareSemi;$('btRun').onclick=()=>runBT();$('btLoad24').onclick=()=>{state.priceMap=null;state.months=0;startWait('クラウド履歴を再読込中',8);loadCloudHistory().then(()=>{$('btMsg').textContent='クラウド履歴を読み込みました。';stopWait()}).catch(e=>{stopWait();$('btMsg').textContent='履歴読込エラー：'+e.message})};$('researchBtn').onclick=resolveSearch;$('liveResearchBtn').onclick=liveResearch;$('manualSearchBtn').onclick=manualSearch;$('favoriteBtn').onclick=toggleFavorite;$('compareAddBtn').onclick=addSelectedToCompare;$('compareClearBtn').onclick=()=>{saveCompareCodes([]);renderCompare();updateCompareButton()};$('homeSearchBtn').onclick=homeSearch;$('homeSearch').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();homeSearch()}});$('researchQuery').addEventListener('input',async()=>{const q=$('researchQuery').value.trim();if(!q){renderSearchSuggestions([]);return}try{await loadStockMaster();renderSearchSuggestions(searchStocks(q,10))}catch{}});$('researchQuery').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();resolveSearch()}});renderFavorites();renderCompare();renderDataHealth();renderStrategyConfig();$('btDays').addEventListener('change',()=>localStorage.setItem('ip7_bt_days',$('btDays').value));
     $('autoToggle').onclick=()=>{settings.auto=!settings.auto;$('autoToggle').classList.toggle('on',settings.auto)};$('sourcePage').onchange=()=>settings.source=$('sourcePage').value.trim();$('relayMode').onchange=()=>settings.relay=$('relayMode').value;$('saveThemeBtn').onclick=()=>{localStorage.setItem('ip7_semi_extra',$('semiExtra').value);localStorage.setItem('ip7_semi_exclude',$('semiExclude').value);$('topMessage').textContent='半導体テーマ設定を保存しました。次回再計算から反映します。';if(state.priceMap){state.ranked=IPCore.scorePriceMap(state.priceMap,settings.theme);renderRows()}};$('clearCacheBtn').onclick=async()=>{await idbClear();state.priceMap=null;state.snapshot=null;state.cloudResearch=null;state.ranked=IPCore.DEMO.slice();localStorage.removeItem('ip7_last_sync');renderStatus();renderRows();$('topMessage').textContent='保存データを削除しました。'};$('exportBtn').onclick=exportRanking;
     if('serviceWorker'in navigator&&location.protocol.startsWith('http')){
