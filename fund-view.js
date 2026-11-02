@@ -14,6 +14,18 @@ function comparison(){
  for(const [key,label] of Object.entries(fields)){const r=node('tr','');r.append(node('th',label));items.forEach(x=>r.append(node('td',fmt(value(x,key),key==='trailingPE'))));table.append(r)}box.append(table,button('比較をクリア',false,()=>{picks.clear();render()}));
 }
 function words(x){const explain=(k,n)=>{const v=value(x,k);return v===null?n+'は未取得':v===0?n+'は横ばい':n+'は'+fmt(Math.abs(v),false)+(v>0?'増':'減')};return explain('revenueGrowth','売上')+'、'+explain('earningsGrowth','利益')+'。'}
+function recommended(list){
+ return list.filter(x=>Object.keys(fields).every(k=>value(x,k)!==null)&&value(x,'reference_score')!==null&&x.revenueGrowth>0&&x.earningsGrowth>0&&x.returnOnEquity>=.08&&x.operatingMargins>0).sort((a,b)=>b.reference_score-a.reference_score||a.trailingPE-b.trailingPE||String(a.code).localeCompare(String(b.code))).slice(0,5);
+}
+function renderRecs(){
+ const box=$('recs');box.replaceChildren();const items=recommended(rows);
+ if(!items.length)box.append(node('p','今回のデータで条件を満たす銘柄はありません。'));
+ items.forEach((x,i)=>{const card=node('article',''),peers=rows.filter(y=>x.sector&&y.sector===x.sector&&y.code!==x.code).map(y=>value(y,'trailingPE')).filter(num);
+ card.append(node('small',(i+1)+'位 ／ '+x.code+' ／ '+(x.sector||'業種未取得')),node('h3',x.company),node('p',words(x)+' ROE '+fmt(x.returnOnEquity,false)+'。'));
+ const avg=peers.reduce((a,b)=>a+b,0)/peers.length;
+ card.append(node('div','確認ポイント：実績PER '+fmt(x.trailingPE,true)+(peers.length?'。対象内の同業他社平均 '+fmt(avg,true)+'（'+peers.length+'社）'+(x.trailingPE>avg?'を上回ります。':x.trailingPE<avg?'を下回ります。':'と同水準です。'):'。対象内に比較できる同業他社はありません。')),node('small','財務データ取得日 '+(x.last_success_at||'不明').slice(0,10)));
+ const go=node('button','この銘柄を詳しく見る');go.onclick=()=>{onlyStars=false;$('favorites').setAttribute('aria-pressed','false');$('sector').value='';$('query').value=x.code;limit=20;render();$('cards').firstElementChild?.scrollIntoView({block:'start'})};card.append(go);box.append(card)});
+}
 function render(){if(!ready)return;const q=$('query').value.normalize('NFKC').toLowerCase().trim(),k=$('order').value;
 const found=rows.filter(x=>(!onlyStars||stars.has(x.code))&&(!$('sector').value||x.sector===$('sector').value)&&(x.code+' '+x.company).normalize('NFKC').toLowerCase().includes(q)).sort((a,b)=>{let x=value(a,k),y=value(b,k);return x===null?Number(y!==null):y===null?-1:k==='trailingPE'?x-y:y-x});
 $('status').textContent=found.length+'件 ／ 対象 '+rows.length+'銘柄 · データ更新 '+stamp;
@@ -22,6 +34,6 @@ const peers=rows.filter(y=>x.sector&&y.sector===x.sector&&x.code!==y.code).map(y
  const pick=button(picks.has(x.code)?'比較から外す':'比較に追加',picks.has(x.code),()=>{if(picks.has(x.code))picks.delete(x.code);else if(picks.size<3)picks.add(x.code);render()});pick.disabled=!picks.has(x.code)&&picks.size>=3;el.append(star,pick);$('cards').append(el)}
 if(!found.length)$('cards').append(node('p','対象内に該当する銘柄がありません。'));$('more').hidden=found.length<=limit}
 async function json(path){const r=await fetch('./data/'+path+'.json',{cache:'no-cache'});if(!r.ok)throw Error();return r.json()}
-async function start(){try{const [f,a]=await Promise.all([json('fundamentals'),json('all-analysis').catch(()=>({stocks:[]}))]);const sectors=new Map(a.stocks.map(x=>[String(x.code),x.sector33]));rows=Object.values(f.stocks).map(x=>({...x,sector:sectors.get(String(x.code))}));for(const sector of [...new Set(rows.map(x=>x.sector).filter(Boolean))].sort()){const opt=node('option',sector);opt.value=sector;$('sector').append(opt)}stamp=f.generated_at.slice(0,10);ready=true;render()}catch{$('status').textContent='データを読み込めません。ページを再読み込みしてください。'}}
+async function start(){try{const [f,a]=await Promise.all([json('fundamentals'),json('all-analysis').catch(()=>({stocks:[]}))]);const sectors=new Map(a.stocks.map(x=>[String(x.code),x.sector33]));rows=Object.values(f.stocks).map(x=>({...x,sector:sectors.get(String(x.code))}));for(const sector of [...new Set(rows.map(x=>x.sector).filter(Boolean))].sort()){const opt=node('option',sector);opt.value=sector;$('sector').append(opt)}stamp=f.generated_at.slice(0,10);ready=true;renderRecs();render()}catch{$('recs').textContent='財務データを取得できません。';$('status').textContent='データを読み込めません。ページを再読み込みしてください。'}}
 $('favorites').onclick=()=>{onlyStars=!onlyStars;$('favorites').setAttribute('aria-pressed',String(onlyStars));limit=20;render()};
 $('sector').onchange=$('query').oninput=$('order').onchange=()=>{limit=20;render()};$('more').onclick=()=>{limit+=20;render()};start();
